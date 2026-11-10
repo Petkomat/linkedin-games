@@ -1,0 +1,164 @@
+"""Find a puzzle grid in a screenshot.
+
+Grid lines are thin and darker than the pixels on either side ("ridges"). Per
+column (and per row) we count ridge pixels. The evenly spaced peaks of that
+profile with the most cells between them give the lattice.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+MIN_PITCH = 12  # px; smaller cells could not hold anything readable
+MAX_CELLS = 15
+SQUARE = 0.05  # how far from square (column / row spacing) cells may look
+
+
+@dataclass(frozen=True)
+class Lattice:
+    """Evenly spaced grid lines along one axis: start, start + pitch, ..."""
+
+    start: float
+    pitch: float
+    cells: int
+
+    @property
+    def end(self) -> float:
+        return self.start + self.pitch * self.cells
+
+
+@dataclass(frozen=True)
+class GridGeometry:
+    """Where a grid sits in an image: its vertical (xs) and horizontal (ys) lines."""
+
+    xs: Lattice
+    ys: Lattice
+
+    @property
+    def rows(self) -> int:
+        return self.ys.cells
+
+    @property
+    def cols(self) -> int:
+        return self.xs.cells
+
+    @property
+    def pitch(self) -> float:
+        return (self.xs.pitch + self.ys.pitch) / 2
+
+    def box(
+        self, top: int, left: int, height: int = 1, width: int = 1, inset: float = 0.0
+    ) -> tuple[float, float, float, float]:
+        """Pixel box (x0, y0, x1, y1) of a block of cells, shrunk by `inset` x pitch."""
+        return (
+            self.xs.start + self.xs.pitch * (left + inset),
+            self.ys.start + self.ys.pitch * (top + inset),
+            self.xs.start + self.xs.pitch * (left + width - inset),
+            self.ys.start + self.ys.pitch * (top + height - inset),
+        )
+
+    def center(self, row: int, col: int) -> tuple[float, float]:
+        """Pixel (x, y) of a cell's centre."""
+        return self.xs.start + self.xs.pitch * (col + 0.5), self.ys.start + self.ys.pitch * (row + 0.5)
+
+    def cell_pixels(self, rgb: np.ndarray, row: int, col: int, inset: float = 0.05) -> np.ndarray:
+        """The cell's pixels, inset by a fraction of the pitch so grid lines are left out."""
+        x0, y0, x1, y1 = self.box(row, col, inset=inset)
+        return rgb[round(y0) : round(y1), round(x0) : round(x1)]
+
+
+def find_grid(rgb: np.ndarray) -> GridGeometry:
+    """Locate the grid: the evenly spaced lines with the most cells between them.
+
+    Cells are square in every LinkedIn grid, so a grid with oblong cells is a
+    misread. That happens on high-resolution screenshots, whose lines are too
+    thick for the ridge finder, so the search is repeated on a half-size copy.
+    """
+    gray = rgb.mean(axis=2)
+    grid = _find_lattices(gray)
+    if not _has_square_cells(grid):
+        try:
+            half = _find_lattices(_half_size(gray))
+        except ValueError:
+            return grid
+        if _has_square_cells(half):
+            return GridGeometry(_doubled(half.xs), _doubled(half.ys))
+    return grid
+
+
+def _has_square_cells(grid: GridGeometry) -> bool:
+    return abs(grid.xs.pitch / grid.ys.pitch - 1) <= SQUARE
+
+
+def _half_size(gray: np.ndarray) -> np.ndarray:
+    """Average every 2x2 block of pixels."""
+    h, w = gray.shape[0] // 2 * 2, gray.shape[1] // 2 * 2
+    return gray[:h, :w].reshape(h // 2, 2, w // 2, 2).mean(axis=(1, 3))
+
+
+def _doubled(lattice: Lattice) -> Lattice:
+    """A lattice found at half size, in full-size pixels (half-size pixel i covers 2i and 2i + 1)."""
+    return Lattice(2 * lattice.start + 0.5, 2 * lattice.pitch, lattice.cells)
+
+
+def _find_lattices(gray: np.ndarray) -> GridGeometry:
+    xs = _fit_lattice(_peaks(_ridge_profile(gray)))
+    # Count horizontal ridges only between the vertical grid borders, and then
+    # vertical ridges only between the horizontal ones, so other UI is ignored.
+    ys = _fit_lattice(_peaks(_ridge_profile(gray[:, _span(xs)].T)))
+    xs = _fit_lattice(_peaks(_ridge_profile(gray[_span(ys), :])))
+    return GridGeometry(xs, ys)
+
+
+def _span(lattice: Lattice) -> slice:
+    return slice(int(lattice.start), int(np.ceil(lattice.end)) + 1)
+
+
+def _ridge_profile(gray: np.ndarray, contrast: float = 6, reaches: tuple[int, ...] = (2, 4)) -> np.ndarray:
+    """For every column, how many pixels are darker than both pixels `reach` px away.
+
+    A reach of 2 finds hairlines, and 4 finds lines up to ~7 px thick (sudoku
+    box borders), whose middle is not darker than pixels 2 px away.
+    """
+    m = max(reaches)
+    mid = gray[:, m:-m]
+    ridge = np.zeros(mid.shape, dtype=bool)
+    for r in reaches:
+        left, right = gray[:, m - r : -m - r], gray[:, m + r : gray.shape[1] - m + r]
+        ridge |= (mid < left - contrast) & (mid < right - contrast)
+    return np.pad(ridge.sum(axis=0), m)
+
+
+def _peaks(profile: np.ndarray, rel: float = 0.25) -> list[float]:
+    """Centres of runs of columns whose ridge count is a good part of the max."""
+    strong = np.flatnonzero(profile >= rel * profile.max())
+    peaks, run = [], [strong[0]]
+    for i in strong[1:]:
+        if i - run[-1] <= 2:
+            run.append(i)
+        else:
+            peaks.append(run)
+            run = [i]
+    peaks.append(run)
+    return [float(np.average(r, weights=profile[r])) for r in peaks]
+
+
+def _fit_lattice(peaks: list[float]) -> Lattice:
+    """The evenly spaced run of peaks with the most cells."""
+    best: Lattice | None = None
+    for i, first in enumerate(peaks):
+        for last in peaks[i + 1 :]:
+            for cells in range(1, MAX_CELLS + 1):
+                pitch = (last - first) / cells
+                if pitch < MIN_PITCH:
+                    break
+                tol = max(2.0, 0.05 * pitch)
+                lines = (first + k * pitch for k in range(cells + 1))
+                if all(min(abs(p - line) for p in peaks) <= tol for line in lines):
+                    if best is None or cells > best.cells:
+                        best = Lattice(first, pitch, cells)
+    if best is None:
+        raise ValueError("could not find a grid in the image")
+    return best

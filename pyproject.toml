@@ -1,0 +1,19 @@
+[project]
+name = "linkedin-games"
+version = "0.1.0"
+description = "Solvers for the LinkedIn daily puzzle games"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26",
+    "pillow>=10.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
