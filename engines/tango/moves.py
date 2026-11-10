@@ -8,7 +8,7 @@ On LinkedIn a click moves a cell along empty -> sun -> moon -> empty.
 
 from __future__ import annotations
 
-from ..common.actions import Action, Click
+from ..common.actions import Action, Click, Think
 from ..common.trace import Put, traced
 from .model import Puzzle, Symbol
 from .solver import solve
@@ -21,8 +21,11 @@ def moves(puzzle: Puzzle) -> list[Action] | None:
     steps = traced(solve, puzzle)
     if steps is None:
         return None
-    actions = []
+    actions: list[Action] = []
     for step in steps:
+        if isinstance(step, Think):
+            actions.append(step)
+            continue
         cell, symbol = step.item
         actions.append(Click(cell, (CLICKS_TO if isinstance(step, Put) else CLICKS_BACK)[symbol]))
     return actions

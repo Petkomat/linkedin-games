@@ -14,3 +14,8 @@ def test_the_mouse_goes_to_the_middle_of_the_cell():
 def test_a_high_resolution_screenshot_has_two_pixels_per_page_pixel():
     # Playwright screenshots in device pixels but moves the mouse in page (CSS) pixels.
     assert Screen(GRID, scale=2).point((2, 3)) == (137.5, 82.5)
+
+
+def test_a_position_between_middles_is_measured_in_cells():
+    # A quarter of a 50 px cell up and to the right of (2, 3)'s middle, on a 2x screen.
+    assert Screen(GRID, scale=2).position(1.75, 3.25) == (143.75, 76.25)

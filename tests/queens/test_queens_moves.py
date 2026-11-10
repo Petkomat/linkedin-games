@@ -1,6 +1,6 @@
 """Seam: moves(puzzle), replayed on a model of LinkedIn's Queens controls."""
 
-from engines.common.actions import Click
+from engines.common.actions import Click, Think
 from engines.queens import Puzzle
 from engines.queens.moves import moves
 
@@ -25,6 +25,8 @@ def play(actions) -> list[dict[tuple[int, int], str]]:
     board: dict[tuple[int, int], str] = {}
     history = []
     for action in actions:
+        if isinstance(action, Think):
+            continue
         assert isinstance(action, Click), f"Queens is played by clicking, not {action}"
         step = CYCLE.index(board.get(action.cell, "empty")) + action.times
         board[action.cell] = CYCLE[step % len(CYCLE)]

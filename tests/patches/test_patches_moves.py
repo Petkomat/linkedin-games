@@ -1,6 +1,6 @@
 """Seam: moves(puzzle), replayed on a model of LinkedIn's Patches controls."""
 
-from engines.common.actions import Click, Drag
+from engines.common.actions import Click, Drag, Think
 from engines.patches import Puzzle, Rect
 from engines.patches.moves import moves
 
@@ -25,6 +25,8 @@ def play(actions) -> list[set[Rect]]:
     patches: set[Rect] = set()
     history = []
     for action in actions:
+        if isinstance(action, Think):
+            continue
         if isinstance(action, Drag):
             (r1, c1), (r2, c2) = action.cells[0], action.cells[-1]
             patch = Rect(min(r1, r2), min(c1, c2), abs(r1 - r2) + 1, abs(c1 - c2) + 1)

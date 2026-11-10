@@ -9,17 +9,30 @@ uv run --extra browser python -m engines.play queens     # or tango, sudoku, pat
 ```
 
 1. Chrome opens with its own profile (default `~/.linkedin-games/chrome-profile`).
-   The first time, log in by hand in that window. The login is kept in the
-   profile, so no password is stored anywhere.
-2. The game's start button is clicked: a button named Start, Play or Resume,
-   possibly inside an iframe. If there isn't one, press it yourself.
-3. The screen is read until the same board is read twice in a row, so a
+   If you aren't logged in to LinkedIn there, it opens the login page and
+   waits for you. The login is kept in the profile, so no password is stored
+   anywhere. Google refuses to sign in inside a browser that is being
+   remote-controlled. To sign in with Google, run
+   `uv run --extra browser python -m engines.play --login` once first: it
+   opens an ordinary Chrome window on the same profile. Log in there, then
+   close the window.
+2. The game opens with its board already showing; no game has a start button.
+   The screen is read until the same board is read twice in a row, so a
    board that is still fading in isn't played, and that board has a solution.
-4. The moves are played, and the screen is saved as `<game>_played.png`.
+3. The moves are played. Two seconds after the last one, the screen is saved
+   as `plays/<game>/<date>_<time>.png`, for example
+   `plays/zip/2026-11-10_14-03-07.png` (`-o` saves it elsewhere). Next to it,
+   a `.md` file of the same name holds the solution as a readable table, with a
+   legend ([`report.py`](report.py)). It is written as soon as the board is
+   solved, before the first move. `plays/` is
+   in `.gitignore`, because the screenshots show your LinkedIn page. The
+   browser stays open until you close its window (or press Ctrl+C), so nothing
+   is cut off and you can look at the result.
 
 Playwright is an optional extra, so the solvers still need only numpy and
 Pillow. It drives the Chrome that is already installed, so it downloads no
-browser of its own.
+browser of its own. Chrome is started with its sandbox on. Playwright turns
+it off by default, which makes Chrome show a warning bar about `--no-sandbox`.
 
 ## Moves follow the solver
 
@@ -35,13 +48,19 @@ into input:
 | Tango | a sun or a moon | one or two clicks (empty → sun → moon) | two or one clicks (→ empty) |
 | Mini Sudoku | a digit (givens skipped) | click the cell, type the digit | click the cell, Backspace |
 | Patches | a patch | drag from corner to corner | click the patch |
-| Wend | a word | drag from its first letter to its last | nothing (see below) |
+| Wend | a word | drag from its first letter to its last | click its first letter (not once it has a ✓) |
 | Zip | the next cell of the path | one held drag from 1, onto the cell | drag back onto the cell before |
 
-- **Wend:** the game knows the hidden words. A decoy (a real word that isn't
-  hidden) is rejected and vanishes, so taking it back needs no input. A
-  hidden word stays once found, so it is never dragged twice, even if the
-  solver dropped it and placed it again.
+- **Wend:** any real word stays on the board, hidden or not. A hidden word
+  gets a ✓ and is locked: it can't and mustn't be removed. Any other word is
+  removed by clicking its first letter, and a wrong word left behind gets in
+  the way. On the first live run, the solver tried ESS and then dropped it,
+  but ESS stayed on the board. The next drag (SETS) started on one of its
+  tiles, which made the game extend it to TESS. So every wrong word the
+  solver drops is clicked away. The solver can't see the ✓s, so the moves
+  apply what a player would see: a ✓ word is dragged once and kept, even if
+  the solver drops it and places it again later. A wrong word that would
+  cross a ✓ word is never tried.
 - **Zip:** `solve` decides links between cells anywhere on the board, which
   the game can't take as input: it only grows one path from 1. So the moves
   come from `walk` ([`solver.py`](../zip/solver.py)), which draws from 1 as a
@@ -60,7 +79,6 @@ certain:
 - the Tango click cycle;
 - Backspace in Mini Sudoku;
 - clicking a patch to remove it;
-- Wend rejecting decoys;
 - dragging back in Zip.
 
 Each one is a constant or a small function in that game's `moves.py`.
@@ -90,8 +108,40 @@ sits in an iframe.
 
 ## Not done yet
 
-- **Humanizing:** the mouse moves in straight lines at constant speed, with
-  fixed pauses.
+- **Humanizing:** so far only these:
+  - **Thinking and bursts** ([`timing.py`](timing.py)): each solver marks
+    *thoughts* in its trace, the moves it worked out together. Each Tango line
+    it deduces is one thought, and so is taking back a failed guess. Every
+    other placement is a thought of its own. The player thinks once per
+    thought, then makes that thought's moves 0.3–0.8 s apart.
+  - **Thinking time:** never under 1.5 s and 2 s on average, with a long tail.
+    The time above 1.5 s is log-normal, the usual shape of human response
+    times. The median is 1.83 s, 1 move in 10 takes over 2.6 s and 1 in 100
+    over 4.2 s. Set these with `--pause`, `--shortest-pause` and
+    `--pause-tail`. A normal curve couldn't spread more without breaking
+    either the average or the floor.
+  - **Typing:** a digit is typed 0.3 s after the click that selected its cell.
+  - **Spots:** the mouse is pressed and released on a random spot of its
+    cell, drawn from a bell curve around the middle (σ = 15% of a cell) and at
+    least 20% of a cell from the edges. Both clicks of a queen hit the same
+    spot, like a double click.
+  - **Drags** move like a hand ([`motion.py`](motion.py)):
+    - A path is cut into *strokes*, the straight runs between turns. Each
+      stroke starts slowly, is fastest in the middle and slows down before
+      the turn. This minimum-jerk speed profile is how people move a hand,
+      with a little even speed mixed in so the hand never quite stops.
+    - A stroke takes 0.15 s plus 0.07 s per cell. Each stroke is randomly up
+      to 30% slower or 40% faster.
+    - Each turn is aimed at a random spot near the turning cell's middle, so
+      the runs lean slightly off the middles. Corners are cut in a small
+      curve inside the turning cell.
+    - The hand hesitates at one turn in five, for 0.1 to 0.3 s. Where Zip backs
+      out of a dead end, it always stops for 0.3 to 0.6 s.
+    - Every position stays inside a cell of the path, and the mouse crosses
+      between cells away from their corners, so the game sees exactly the
+      path's cells, in order.
+    - A drag takes at least 0.5 to 0.6 s, so a patch is drawn in about half
+      a second. The zip2 path takes 7 to 8.5 s.
 - **Zip on big boards:** `walk` branches only at the end of the path. Random
   8×8 boards take at most 70 ms, 9×9 up to 2 s, and sparse 10×10 boards much
   longer.

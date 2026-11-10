@@ -1,6 +1,6 @@
 """Seam: moves(puzzle), replayed on a model of LinkedIn's Tango controls."""
 
-from engines.common.actions import Click
+from engines.common.actions import Click, Think
 from engines.tango import Puzzle, Symbol
 from engines.tango.moves import moves
 
@@ -30,6 +30,8 @@ def play(puzzle: Puzzle, actions) -> list[dict]:
     cells = {(r, c): s for r, row in enumerate(puzzle.givens) for c, s in enumerate(row)}
     history = []
     for action in actions:
+        if isinstance(action, Think):
+            continue
         assert isinstance(action, Click), f"Tango is played by clicking, not {action}"
         r, c = action.cell
         assert puzzle.givens[r][c] is None, f"the given at {action.cell} can't be changed"
@@ -63,3 +65,16 @@ def test_a_failed_guess_is_entered_and_then_corrected():
     assert any(
         symbol not in (None, answer[cell]) for shown in history for cell, symbol in shown.items()
     ), "a symbol that isn't in the answer was shown on the way"
+
+
+def test_the_cells_of_a_deduced_line_go_in_together_after_one_think():
+    actions = moves(Puzzle(TANGO2, equal=TANGO2_EQUAL, opposite=TANGO2_OPPOSITE))
+
+    thoughts = [[]]
+    for action in actions:
+        if isinstance(action, Think):
+            thoughts.append([])
+        else:
+            thoughts[-1].append(action)
+    assert thoughts[0] == [], "it thinks before the first move"
+    assert max(len(thought) for thought in thoughts) > 1, "a whole line in one burst"

@@ -12,7 +12,8 @@ and so on. A line with no pattern left is a dead end.
 Search: as in the other solvers, branch on the line with the fewest patterns
 left, trying each of them. The search stops at the first solution. Every cell
 it fills in, by deduction or by a guess, and every cell it clears again when a
-guess fails is written to `trace`.
+guess fails is written to `trace`. The cells one line settles at once are
+one thought.
 """
 
 from __future__ import annotations
@@ -53,11 +54,12 @@ def solve(puzzle: Puzzle, trace: Trace | None = None) -> Grid | None:
                 return False
             patterns[line] = kept
             always, ever = reduce(and_, kept), reduce(or_, kept)
-            for i, cell in enumerate(lines[line]):
-                if cells[cell] is None and (always >> i & 1 or not ever >> i & 1):
-                    cells[cell] = always >> i & 1
-                    trace.put((divmod(cell, n), Symbol.SUN if cells[cell] else Symbol.MOON))
-                    queue.update(crossing[cell])
+            with trace.thought():  # the cells this line settles are seen together
+                for i, cell in enumerate(lines[line]):
+                    if cells[cell] is None and (always >> i & 1 or not ever >> i & 1):
+                        cells[cell] = always >> i & 1
+                        trace.put((divmod(cell, n), Symbol.SUN if cells[cell] else Symbol.MOON))
+                        queue.update(crossing[cell])
         return True
 
     def search(patterns: list[list[int]], cells: Cells) -> Cells | None:

@@ -25,6 +25,8 @@ from .model import Cell, Puzzle
 
 
 def solve(puzzle: Puzzle) -> list[Cell] | None:
+    if not _numbered_one_to_n(puzzle):
+        return None
     board = _Board(puzzle)
     try:
         state = _State(board)
@@ -47,6 +49,8 @@ def walk(puzzle: Puzzle, trace: Trace | None = None) -> list[Cell] | None:
     Branching only at the path's end, not at the most constrained cell, makes
     this slower than `solve` on big, sparse boards.
     """
+    if not _numbered_one_to_n(puzzle):
+        return None
     trace = Trace() if trace is None else trace
     board = _Board(puzzle)
     try:
@@ -81,6 +85,12 @@ def _draw(state: _State, path: list[int], trace: Trace) -> list[int] | None:
             return found
         trace.back_to(mark)
     return None
+
+
+def _numbered_one_to_n(puzzle: Puzzle) -> bool:
+    """Are the numbers exactly 1, 2, ..., N? If not, the board was misread."""
+    numbers = sorted(puzzle.numbers.values())
+    return bool(numbers) and numbers == list(range(1, len(numbers) + 1))
 
 
 class _Contradiction(Exception):

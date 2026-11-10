@@ -85,24 +85,31 @@ class GridGeometry:
 def find_grid(rgb: np.ndarray) -> GridGeometry:
     """Locate the grid: the evenly spaced lines with the most cells between them.
 
-    Cells are square in every LinkedIn grid, so a grid with oblong cells is a
-    misread. That happens on high-resolution screenshots, whose lines are too
-    thick for the ridge finder, so the search is repeated on a half-size copy.
+    On high-resolution screenshots, the thick lines are too wide for the ridge
+    finder. Then it finds oblong cells (wend2), or only the inside of the
+    board, missing its thick outer frame (queens2: the 6x6 inside an 8x8). So
+    the search is repeated on a half-size copy, where those lines are thin.
+    That grid wins if its cells are square (as on every LinkedIn board) and
+    either the full-size cells aren't, or it is a bigger square board.
     """
     gray = rgb.mean(axis=2)
     grid = _find_lattices(gray)
-    if not _has_square_cells(grid):
-        try:
-            half = _find_lattices(_half_size(gray))
-        except ValueError:
-            return grid
-        if _has_square_cells(half):
-            return GridGeometry(_doubled(half.xs), _doubled(half.ys))
+    try:
+        half = _find_lattices(_half_size(gray))
+    except ValueError:
+        return grid
+    if _has_square_cells(half) and (not _has_square_cells(grid) or _bigger_board(half, grid)):
+        return GridGeometry(_doubled(half.xs), _doubled(half.ys))
     return grid
 
 
 def _has_square_cells(grid: GridGeometry) -> bool:
     return abs(grid.xs.pitch / grid.ys.pitch - 1) <= SQUARE
+
+
+def _bigger_board(half: GridGeometry, full: GridGeometry) -> bool:
+    """Is the half-size grid a square board with more cells than the full-size one?"""
+    return half.rows == half.cols and half.rows * half.cols > full.rows * full.cols
 
 
 def _half_size(gray: np.ndarray) -> np.ndarray:

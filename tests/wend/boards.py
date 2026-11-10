@@ -45,3 +45,21 @@ WEND2_ANSWER = {
     Word("ALIGN", ((1, 1), (2, 1), (3, 1), (3, 0), (4, 0))),
     Word("ENGINE", ((1, 2), (1, 3), (2, 3), (2, 4), (1, 4), (0, 4))),
 }
+
+# LinkedIn's Wend of 2026-11-10, typed in from the user's screenshot: words of
+# 3, 4, 5 and 7 letters. The solver tries BOD, ESS and NAH on the way. The
+# first live run left ESS on the board, and the SETS drag then turned it into
+# TESS.
+WEND3 = letters("""
+    B H A I R
+    O D N I P
+    U N A E #
+    E T T # #
+    S S # # #
+""")
+WEND3_ANSWER = {
+    Word("BOUND", ((0, 0), (1, 0), (2, 0), (2, 1), (1, 1))),
+    Word("HAIRPIN", ((0, 1), (0, 2), (0, 3), (0, 4), (1, 4), (1, 3), (1, 2))),
+    Word("EAT", ((2, 3), (2, 2), (3, 2))),
+    Word("SETS", ((4, 0), (3, 0), (3, 1), (4, 1))),
+}

@@ -3,32 +3,46 @@
 from __future__ import annotations
 
 import io
+import random
 import time
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
 from PIL import Image
 
+from ..common import Cell
 from ..common.actions import Action, Click, Drag
 from ..vision import GridGeometry
 from .games import Game
+from .motion import Hand, drag, spot
 from .screen import Screen
+from .timing import Tempo
 
 if TYPE_CHECKING:
     from playwright.sync_api import Page
 
-DRAG_STEPS = 4  # mouse-move events from one cell to the next, so the page sees the way between
 
 
 class Player:
-    """Reads the board on `page` and enters moves with the mouse.
+    """Reads the board on `page` and enters moves with the mouse and keyboard.
 
-    `pause` is the time in seconds between two actions, so the page can keep up.
+    It waits before each move as `tempo` says: a thinking pause at the start
+    of each thought, then a quick burst. The mouse is pressed and released on
+    random spots of their cells, never exactly on the middle, and drags move
+    like `hand` (see `motion`). Random draws come from `rng`.
     """
 
-    def __init__(self, page: Page, pause: float = 0.1) -> None:
+    def __init__(
+        self,
+        page: Page,
+        tempo: Tempo | None = None,
+        rng: random.Random | None = None,
+        hand: Hand | None = None,
+    ) -> None:
         self.page = page
-        self.pause = pause
+        self.tempo = tempo or Tempo()
+        self.rng = rng or random.Random()
+        self.hand = hand or Hand()
 
     def screenshot(self) -> Image.Image:
         """What is on screen now, in device pixels."""
@@ -60,19 +74,27 @@ class Player:
     def perform(self, actions: Iterable[Action], grid: GridGeometry) -> None:
         screen = Screen(grid, self.scale)
         mouse = self.page.mouse
-        for action in actions:
+        for wait, action in self.tempo.waits(actions, self.rng):
+            time.sleep(wait)
             if isinstance(action, Click):
-                x, y = screen.point(action.cell)
-                for _ in range(action.times):
+                row, col = action.cell
+                d_row, d_col = spot(self.rng)
+                x, y = screen.position(row + d_row, col + d_col)
+                for _ in range(action.times):  # a double click hits the same spot twice
                     mouse.click(x, y)
             elif isinstance(action, Drag):
-                start, *rest = (screen.point(cell) for cell in action.cells)
-                mouse.move(*start)
-                mouse.down()
-                for x, y in rest:
-                    mouse.move(x, y, steps=DRAG_STEPS)
-                    time.sleep(self.pause / 5)
-                mouse.up()
+                self._drag(screen, action.cells)
             else:
                 self.page.keyboard.press(action.key)
-            time.sleep(self.pause)
+
+    def _drag(self, screen: Screen, cells: tuple[Cell, ...]) -> None:
+        """Press, move along the hand's timeline as the clock runs, release."""
+        timeline = drag(cells, self.rng, self.hand)
+        mouse = self.page.mouse
+        mouse.move(*screen.position(*timeline[0][1:]))
+        mouse.down()
+        pressed = time.perf_counter()
+        for seconds, row, col in timeline[1:]:
+            time.sleep(max(0.0, pressed + seconds - time.perf_counter()))
+            mouse.move(*screen.position(row, col))
+        mouse.up()

@@ -9,8 +9,8 @@ queen takes two clicks and taking it back one more.
 
 from __future__ import annotations
 
-from ..common.actions import Action, Click
-from ..common.trace import Put, traced
+from ..common.actions import Action, Click, Think
+from ..common.trace import Put, Step, traced
 from .model import Puzzle
 from .solver import solve
 
@@ -22,7 +22,10 @@ def moves(puzzle: Puzzle) -> list[Action] | None:
     steps = traced(solve, puzzle)
     if steps is None:
         return None
-    return [
-        Click(step.item, QUEEN_CLICKS if isinstance(step, Put) else REMOVE_CLICKS)
-        for step in steps
-    ]
+    return [_action(step) for step in steps]
+
+
+def _action(step: Step) -> Action:
+    if isinstance(step, Think):
+        return step
+    return Click(step.item, QUEEN_CLICKS if isinstance(step, Put) else REMOVE_CLICKS)

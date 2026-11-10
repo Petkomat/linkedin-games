@@ -1,4 +1,7 @@
+import pytest
+
 from engines.zip import Puzzle, solve
+from engines.zip.solver import walk
 from tests.helpers import solve_within
 
 from .boards import ZIP1, ZIP1_ANSWER, ZIP2, ZIP2_ANSWER
@@ -36,6 +39,23 @@ def test_unsolvable_puzzle_has_no_solution():
     puzzle = Puzzle(rows=2, cols=2, numbers={(0, 0): 1, (1, 1): 2})
 
     assert solve(puzzle) is None
+
+
+@pytest.mark.parametrize(
+    "numbers",
+    [
+        {},  # the page hasn't drawn its numbers yet
+        {(0, 0): 2, (1, 1): 3},  # no 1
+        {(0, 0): 1, (1, 1): 3},  # no 2
+        {(0, 0): 1, (0, 1): 1, (1, 1): 2},  # two 1s
+    ],
+)
+def test_a_misread_numbering_has_no_solution(numbers):
+    # Boards are read from the screen, so the numbers may be missing or wrong.
+    puzzle = Puzzle(rows=2, cols=2, numbers=numbers)
+
+    assert solve(puzzle) is None
+    assert walk(puzzle) is None
 
 
 def test_path_never_crosses_a_wall():

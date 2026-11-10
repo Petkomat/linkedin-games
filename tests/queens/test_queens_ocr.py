@@ -1,7 +1,7 @@
 from engines.queens import read_puzzle
 from tests.helpers import example
 
-from .boards import QUEENS1
+from .boards import QUEENS1, QUEENS2
 
 
 def partition(regions) -> set[frozenset[tuple[int, int]]]:
@@ -18,3 +18,11 @@ def test_reads_the_regions_ignoring_placed_queens():
     puzzle = read_puzzle(example("queens", "queens1.png"))
 
     assert partition(puzzle.regions) == partition(QUEENS1)
+
+
+def test_reads_a_high_resolution_board():
+    # The thick outer frame is too wide for the line finder at full size, which
+    # used to see only the 6x6 inside it.
+    puzzle = read_puzzle(example("queens", "queens2.png"))
+
+    assert partition(puzzle.regions) == partition(QUEENS2)

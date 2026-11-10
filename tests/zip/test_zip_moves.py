@@ -2,7 +2,7 @@
 
 import pytest
 
-from engines.common.actions import Drag
+from engines.common.actions import Drag, Think
 from engines.zip.moves import moves
 from tests.helpers import solve_within
 
@@ -18,7 +18,7 @@ def play(puzzle, actions) -> list[list[tuple[int, int]]]:
     """The path is drawn in one drag that starts on 1. Moving onto a free
     neighbour of the path's end extends the path; moving back onto the cell
     before the end takes the end back. Returns the path after every move."""
-    (drag,) = actions  # Zip is drawn in a single drag
+    (drag,) = [a for a in actions if not isinstance(a, Think)]  # Zip is drawn in a single drag
     assert isinstance(drag, Drag), f"Zip is drawn by dragging, not {drag}"
     start, *moved_to = drag.cells
     assert puzzle.numbers.get(start) == 1, "the drag starts on 1"

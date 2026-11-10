@@ -10,7 +10,7 @@ empties it.
 
 from __future__ import annotations
 
-from ..common.actions import Action, Click, Press
+from ..common.actions import Action, Click, Press, Think
 from ..common.trace import Put, traced
 from .model import Puzzle
 from .solver import solve
@@ -24,6 +24,9 @@ def moves(puzzle: Puzzle) -> list[Action] | None:
         return None
     actions: list[Action] = []
     for step in steps:
+        if isinstance(step, Think):
+            actions.append(step)
+            continue
         (r, c), digit = step.item
         if puzzle.grid[r][c]:
             continue  # a given: the solver settles it too, but it's already on the board

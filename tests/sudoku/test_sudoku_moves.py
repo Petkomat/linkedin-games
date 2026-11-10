@@ -1,6 +1,6 @@
 """Seam: moves(puzzle), replayed on a model of LinkedIn's Mini Sudoku controls."""
 
-from engines.common.actions import Click, Press
+from engines.common.actions import Click, Press, Think
 from engines.sudoku import Puzzle
 from engines.sudoku.moves import moves
 
@@ -27,6 +27,8 @@ def play(puzzle: Puzzle, actions) -> list[dict]:
     selected = None
     history = []
     for action in actions:
+        if isinstance(action, Think):
+            continue
         if isinstance(action, Click):
             selected = action.cell
             continue

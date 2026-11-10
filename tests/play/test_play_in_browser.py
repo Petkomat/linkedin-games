@@ -9,14 +9,17 @@ original screenshot file.
 from __future__ import annotations
 
 import base64
+import random
 from math import ceil, floor
 
 import pytest
 from PIL import Image
 
-from engines.common.actions import Click, Drag, Press
+from engines.common.actions import Click, Drag, Press, Think
 from engines.play.browser import Player
 from engines.play.games import GAMES
+from engines.play.motion import INSTANT
+from engines.play.timing import INSTANT as NO_WAITING
 from engines.vision import GridGeometry
 from tests.helpers import example
 
@@ -28,7 +31,7 @@ RECORDER = """<script>
 window.events = [];
 for (const type of ["pointerdown", "pointermove", "pointerup"]) {
   addEventListener(type, (e) => {
-    if (type !== "pointermove" || e.buttons) events.push({type, x: e.clientX, y: e.clientY});
+    if (type !== "pointermove" || e.buttons) events.push({type, x: e.clientX, y: e.clientY, t: e.timeStamp});
   });
 }
 addEventListener("keydown", (e) => events.push({type: "keydown", key: e.key}));
@@ -64,6 +67,11 @@ def page_showing(browser, screenshot):
     return page
 
 
+def instant_player(page, rng=None) -> Player:
+    """A player that doesn't wait for anything."""
+    return Player(page, tempo=NO_WAITING, rng=rng, hand=INSTANT)
+
+
 def cell_at(grid: GridGeometry, x: float, y: float) -> tuple[int, int]:
     return floor((y - grid.ys.start) / grid.ys.pitch), floor((x - grid.xs.start) / grid.xs.pitch)
 
@@ -92,6 +100,7 @@ def one_by_one(actions) -> list:
     return [
         Click(a.cell) if isinstance(a, Click) else a
         for a in actions
+        if not isinstance(a, Think)
         for _ in range(a.times if isinstance(a, Click) else 1)
     ]
 
@@ -118,6 +127,7 @@ def _passes_through(crossed, named) -> bool:
     [
         ("patches", "patches1.png"),
         ("queens", "queens1.png"),
+        ("queens", "queens2.png"),  # a whole LinkedIn page, high resolution
         ("sudoku", "sudoku1.png"),
         ("tango", "tango2.png"),
         ("wend", "wend2.png"),
@@ -129,7 +139,51 @@ def test_the_player_enters_the_moves_on_the_board(browser, game, screenshot):
     original = rules.scan(example(game, screenshot))
     page = page_showing(browser, example(game, screenshot))
 
-    Player(page, pause=0).play(rules)
+    instant_player(page).play(rules)
 
     recorded = gestures(page.evaluate("events"), original.grid)
     assert same_gestures(recorded, one_by_one(rules.moves(original.puzzle)))
+
+
+@pytest.mark.parametrize(("game", "screenshot"), [("queens", "queens1.png"), ("patches", "patches1.png")])
+def test_the_mouse_is_pressed_and_released_on_random_spots_well_inside_cells(browser, game, screenshot):
+    # Queens is clicked; Patches is dragged from corner to corner and clicked.
+    rules = GAMES[game]
+    original = rules.scan(example(game, screenshot))
+    page = page_showing(browser, example(game, screenshot))
+
+    instant_player(page, random.Random(1)).play(rules)
+
+    spots = [
+        offset_in_cell(original.grid, event["x"] * SCALE, event["y"] * SCALE)
+        for event in page.evaluate("events")
+        if event["type"] in ("pointerdown", "pointerup")
+    ]
+    assert max(max(abs(dx), abs(dy)) for dx, dy in spots) > 0.1, "not always the middle"
+    assert all(max(abs(dx), abs(dy)) < 0.35 for dx, dy in spots), "never near an edge"
+
+
+def offset_in_cell(grid: GridGeometry, x: float, y: float) -> tuple[float, float]:
+    """Where (x, y) is in its cell: (dx, dy) from the middle, in cells."""
+    middle_x, middle_y = grid.center(*cell_at(grid, x, y))
+    return (x - middle_x) / grid.xs.pitch, (y - middle_y) / grid.ys.pitch
+
+
+def test_a_patch_is_drawn_in_a_smooth_half_second_drag(browser):
+    rules = GAMES["patches"]
+    page = page_showing(browser, example("patches", "patches1.png"))
+    player = Player(page, tempo=NO_WAITING, rng=random.Random(1))
+
+    player.play(rules)
+
+    drags, moves = [], 0
+    for event in page.evaluate("events"):
+        if event["type"] == "pointerdown":
+            pressed, moves = event["t"], 0
+        elif event["type"] == "pointermove":
+            moves += 1
+        elif event["type"] == "pointerup" and moves:
+            drags.append((event["t"] - pressed, moves))
+    assert drags
+    assert all(450 <= ms <= 800 for ms, _ in drags), "about half a second each"
+    assert all(moves >= 10 for _, moves in drags), "the mouse glides; it doesn't jump"

@@ -22,5 +22,12 @@ class Screen:
 
     def point(self, cell: Cell) -> tuple[float, float]:
         """Page position of the middle of `cell`."""
-        x, y = self.grid.center(*cell)
+        return self.position(*cell)
+
+    def position(self, row: float, col: float) -> tuple[float, float]:
+        """Page position of a point given in cells: (row, col) is the middle of
+        that cell, and (row + 0.5, col) the middle of its bottom edge."""
+        x, y = self.grid.center(0, 0)
+        x += col * self.grid.xs.pitch
+        y += row * self.grid.ys.pitch
         return x / self.scale, y / self.scale

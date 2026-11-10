@@ -218,3 +218,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Screenshots of plays on LinkedIn (engines.play): they show the user's page
+plays/
+/*_played.png
