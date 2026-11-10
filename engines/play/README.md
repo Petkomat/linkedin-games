@@ -93,6 +93,21 @@ but moves the mouse in page pixels. The screenshot is of the window only
 isn't looked up in the page's HTML at all, so it doesn't matter if the game
 sits in an iframe.
 
+## Live check
+
+`uv run --extra browser python -m engines.play.check [game ...]` checks that
+the solvers still work on LinkedIn without playing anything. It opens each
+game as a guest (not logged in) in headless Chrome and clicks the guests'
+"Start game". It moves the mouse aside, because a pointer resting on a cell
+highlights it, then reads and solves the board. It saves `checks/<game>.png`
+and `.md`, and exits with 1 if any game fails.
+
+GitHub Actions runs it every Sunday and Wednesday at 10:00 UTC, and on demand
+from the Actions tab ([`live-check.yml`](../../.github/workflows/live-check.yml)).
+Each run's screenshots and solutions are kept as its `live-check` artifact.
+GitHub turns off scheduled workflows in a repository with no activity for 60
+days.
+
 ## Tests
 
 - `tests/<game>/test_<game>_moves.py`: the moves are replayed on a small model

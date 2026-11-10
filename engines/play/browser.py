@@ -21,6 +21,8 @@ from .timing import Tempo
 if TYPE_CHECKING:
     from playwright.sync_api import Page
 
+RETRY = 1.0  # s between two looks at the screen while waiting for the board
+
 
 
 class Player:
@@ -60,6 +62,20 @@ class Player:
         seen, actions = board
         self.perform(actions, seen.grid)
         return actions
+
+    def wait_for_board(self, game: Game, seconds: float) -> tuple[Any, list[Action]] | None:
+        """`read`, once the same board has been read twice in a row (so a board
+        that is still fading in isn't used); None after `seconds`."""
+        deadline = time.monotonic() + seconds
+        previous = None
+        while True:
+            board = self.read(game)
+            if board is not None and previous is not None and board[0].puzzle == previous[0].puzzle:
+                return board
+            if time.monotonic() + RETRY > deadline:
+                return None
+            previous = board
+            time.sleep(RETRY)
 
     def read(self, game: Game) -> tuple[Any, list[Action]] | None:
         """The board on screen and the moves that solve it; None if there is no

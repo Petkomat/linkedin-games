@@ -33,7 +33,6 @@ PLAYS = Path("plays")  # final screenshots, one folder per game
 LOGIN_URL = "https://www.linkedin.com/login"
 LOGIN_PAGES = ("/login", "/authwall", "/checkpoint", "/uas/", "/signup")
 SESSION_COOKIE = "li_at"  # LinkedIn's login cookie
-RETRY = 1.0  # s between two looks at the screen while waiting for the board
 RESULT_WAIT = 2.0  # s after the last move before the final screenshot
 
 
@@ -73,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
         page = browser.pages[0] if browser.pages else browser.new_page()
         _open(page, game)
         player = Player(page, tempo=Tempo(Pauses(args.pause, args.shortest_pause, args.pause_tail)))
-        board = _wait_for_board(player, game, args.wait)
+        board = player.wait_for_board(game, args.wait)
         if board is None:
             player.screenshot().save(output)
             print(f"No solvable board on screen after {args.wait:.0f} s; see {output}")
@@ -156,20 +155,6 @@ def _wait_for_login(page: Page) -> None:
 
 def _is_login(url: str) -> bool:
     return any(marker in url for marker in LOGIN_PAGES)
-
-
-def _wait_for_board(player: Player, game: Game, seconds: float):
-    """The board and its moves, once the same board has been read twice in a row
-    (so a board that is still fading in isn't played); None after `seconds`."""
-    deadline = time.monotonic() + seconds
-    previous = None
-    while time.monotonic() < deadline:
-        board = player.read(game)
-        if board is not None and previous is not None and board[0].puzzle == previous[0].puzzle:
-            return board
-        previous = board
-        time.sleep(RETRY)
-    return None
 
 
 if __name__ == "__main__":

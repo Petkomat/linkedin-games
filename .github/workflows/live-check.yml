@@ -1,0 +1,24 @@
+# Do the solvers still read and solve LinkedIn's games? Opens each game as a
+# guest (not logged in), reads and solves today's board, and plays nothing.
+# The screenshots and solutions are kept as the run's "live-check" artifact.
+name: Live check
+
+on:
+  schedule:
+    - cron: "0 10 * * 0,3"  # Sundays and Wednesdays, 10:00 UTC: after the midnight-Pacific reset
+  workflow_dispatch:  # and by hand, from the Actions tab
+
+jobs:
+  check:
+    runs-on: ubuntu-latest  # comes with Google Chrome
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - run: uv sync --extra browser
+      - run: uv run --extra browser python -m engines.play.check --out checks
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: live-check
+          path: checks/
