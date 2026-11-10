@@ -7,6 +7,9 @@
    is used as often as asked (an exact cover). Branch on the free tile that
    the fewest placements can still cover: none means a dead end, and one
    means a forced move.
+
+Every word the search places, and every word it drops again when it hits a
+dead end, is written to `trace`.
 """
 
 from __future__ import annotations
@@ -15,13 +18,14 @@ from collections import Counter
 from collections.abc import Iterator
 
 from ..common.bits import set_bits
+from ..common.trace import Trace
 from .dictionary import words_of_length
 from .model import Cell, Puzzle, Word
 
 Placement = tuple[int, Word]  # (mask of the tiles it uses, the word)
 
 
-def solve(puzzle: Puzzle) -> list[Word] | None:
+def solve(puzzle: Puzzle, trace: Trace | None = None) -> list[Word] | None:
     tiles = [
         (r, c)
         for r, row in enumerate(puzzle.letters)
@@ -36,11 +40,12 @@ def solve(puzzle: Puzzle) -> list[Word] | None:
         for placement in _spelled_paths(puzzle, n, bit):
             for i in set_bits(placement[0]):
                 covering[i].append(placement)
-    return _search(covering, Counter(puzzle.lengths), 0, (1 << len(tiles)) - 1)
+    trace = Trace() if trace is None else trace
+    return _search(covering, Counter(puzzle.lengths), 0, (1 << len(tiles)) - 1, trace)
 
 
 def _search(
-    covering: list[list[Placement]], need: Counter[int], used: int, every_tile: int
+    covering: list[list[Placement]], need: Counter[int], used: int, every_tile: int, trace: Trace
 ) -> list[Word] | None:
     if used == every_tile:
         return []
@@ -51,12 +56,15 @@ def _search(
             fewest = fits
             if not fits:
                 return None
+    mark = trace.mark()
     for mask, word in fewest:
+        trace.put(word)
         need[len(word.text)] -= 1
-        rest = _search(covering, need, used | mask, every_tile)
+        rest = _search(covering, need, used | mask, every_tile, trace)
         need[len(word.text)] += 1
         if rest is not None:
             return [word, *rest]
+        trace.back_to(mark)
     return None
 
 

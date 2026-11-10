@@ -9,16 +9,19 @@ At every node, every open unit's free cells are counted:
   * one left  -> that queen is forced;
   * otherwise we branch on the unit with the fewest free cells (as in the
     Patches and Sudoku solvers), trying each of its cells.
-The search stops at the first solution.
+The search stops at the first solution. Every queen it places, forced or
+guessed, and every queen it takes back is written to `trace`.
 """
 
 from __future__ import annotations
 
 from ..common.bits import set_bits
+from ..common.trace import Trace
 from .model import Cell, Puzzle
 
 
-def solve(puzzle: Puzzle) -> list[Cell] | None:
+def solve(puzzle: Puzzle, trace: Trace | None = None) -> list[Cell] | None:
+    trace = Trace() if trace is None else trace
     n = puzzle.size
     labels = sorted({label for row in puzzle.regions for label in row})
     if len(labels) != n:
@@ -38,11 +41,14 @@ def solve(puzzle: Puzzle) -> list[Cell] | None:
                 best_options, best_count = options, count
                 if count == 1:
                     break  # forced
+        mark = trace.mark()
         for cell in set_bits(best_options):
+            trace.put(divmod(cell, n))
             rest = tuple(u for u in open_units if u not in units_of[cell])
             found = search(free & ~blocked[cell], rest)
             if found is not None:
                 return [cell, *found]
+            trace.back_to(mark)
         return None
 
     queens = search((1 << (n * n)) - 1, tuple(range(3 * n)))

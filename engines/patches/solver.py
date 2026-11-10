@@ -10,17 +10,20 @@ At every node of the search:
   * a free cell that only one root can reach is *forced* into that root,
     which drops all of its candidates that miss the cell;
   * we branch on the root with the fewest remaining candidates.
-The search stops at the first complete tiling.
+The search stops at the first complete tiling. Every patch it places and
+every patch it removes again when a guess fails is written to `trace`.
 """
 
 from __future__ import annotations
 
+from ..common.trace import Trace
 from .model import Puzzle, Rect, Root, Shape
 
 Candidate = tuple[Rect, int]  # rectangle and its cell bitmask
 
 
-def solve(puzzle: Puzzle) -> dict[Root, Rect] | None:
+def solve(puzzle: Puzzle, trace: Trace | None = None) -> dict[Root, Rect] | None:
+    trace = Trace() if trace is None else trace
     root_bits = 0
     for root in puzzle.roots:
         root_bits |= _bit(root.row, root.col, puzzle.cols)
@@ -37,10 +40,13 @@ def solve(puzzle: Puzzle) -> dict[Root, Rect] | None:
             return False
         root, options = branch
         rest = [r for r in remaining if r is not root]
+        mark = trace.mark()
         for rect, mask in options:
             placed[root] = rect
+            trace.put(rect)
             if search(covered | mask, rest):
                 return True
+            trace.back_to(mark)
         del placed[root]
         return False
 

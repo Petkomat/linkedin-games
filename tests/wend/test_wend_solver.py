@@ -1,10 +1,10 @@
 import pytest
 
-from engines.wend import Puzzle, Word, solve
+from engines.wend import Puzzle, solve
 from engines.wend.dictionary import english_words
 from tests.helpers import solve_within
 
-from .boards import WEND1, WEND2
+from .boards import WEND1, WEND1_ANSWER, WEND2, WEND2_ANSWER
 from .generator import random_puzzle
 
 
@@ -27,29 +27,11 @@ def assert_obeys_the_rules(puzzle: Puzzle, answer) -> None:
 
 
 def test_solves_the_wend1_example():
-    # Solved by hand: the top row bends down into WISDOM, FOUND runs along
-    # the bottom, and DONE climbs the right edge.
-    answer = solve(Puzzle(WEND1, lengths=(3, 4, 5, 6)))
-
-    assert set(answer) == {
-        Word("WIN", ((1, 0), (2, 0), (2, 1))),
-        Word("DONE", ((4, 4), (3, 4), (2, 4), (2, 3))),
-        Word("FOUND", ((3, 0), (4, 0), (4, 1), (4, 2), (4, 3))),
-        Word("WISDOM", ((0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (1, 4))),
-    }
+    assert set(solve(Puzzle(WEND1, lengths=(3, 4, 5, 6)))) == WEND1_ANSWER
 
 
 def test_solves_the_wend2_example():
-    # Solved by hand. The H can only join O, so it starts HOLD; that leaves
-    # W-I-N in the corner, ALIGN around the L, and ENGINE on the right.
-    answer = solve(Puzzle(WEND2, lengths=(3, 4, 5, 6)))
-
-    assert set(answer) == {
-        Word("WIN", ((0, 0), (1, 0), (2, 0))),
-        Word("HOLD", ((3, 2), (3, 3), (3, 4), (4, 4))),
-        Word("ALIGN", ((1, 1), (2, 1), (3, 1), (3, 0), (4, 0))),
-        Word("ENGINE", ((1, 2), (1, 3), (2, 3), (2, 4), (1, 4), (0, 4))),
-    }
+    assert set(solve(Puzzle(WEND2, lengths=(3, 4, 5, 6)))) == WEND2_ANSWER
 
 
 @pytest.mark.parametrize("seed", range(10))

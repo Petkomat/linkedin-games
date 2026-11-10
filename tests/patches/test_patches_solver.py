@@ -3,6 +3,7 @@ import pytest
 from engines.patches import Puzzle, Rect, Root, Shape, solve
 from tests.helpers import solve_within
 
+from .boards import PATCHES3_ANSWER, PATCHES3_ROOTS
 from .generator import random_puzzle
 
 
@@ -57,35 +58,11 @@ def test_unsolvable_puzzle_returns_none():
 
 
 def test_solves_the_patches3_example():
-    # examples/patches/patches3.png shows this board already solved.
-    roots = {
-        "blue": Root(0, 1, Shape.ANY, 5),
-        "gold": Root(0, 3, Shape.ANY, 3),
-        "orange": Root(1, 5, Shape.ANY, 3),
-        "red": Root(2, 0, Shape.ANY, 3),
-        "purple": Root(2, 2, Shape.WIDE),
-        "green": Root(3, 3, Shape.SQUARE),
-        "teal": Root(3, 5, Shape.ANY, 3),
-        "gray": Root(4, 0, Shape.ANY, 3),
-        "magenta": Root(5, 2, Shape.ANY, 3),
-        "brown": Root(5, 4, Shape.ANY, 3),
-    }
-    puzzle = Puzzle(rows=6, cols=6, roots=tuple(roots.values()))
+    puzzle = Puzzle(rows=6, cols=6, roots=tuple(PATCHES3_ROOTS.values()))
 
     solution = solve(puzzle)
 
-    assert solution == {
-        roots["red"]: Rect(0, 0, 3, 1),
-        roots["blue"]: Rect(0, 1, 5, 1),
-        roots["gold"]: Rect(0, 2, 1, 3),
-        roots["orange"]: Rect(0, 5, 3, 1),
-        roots["purple"]: Rect(1, 2, 2, 3),
-        roots["gray"]: Rect(3, 0, 3, 1),
-        roots["green"]: Rect(3, 2, 2, 2),
-        roots["brown"]: Rect(3, 4, 3, 1),
-        roots["teal"]: Rect(3, 5, 3, 1),
-        roots["magenta"]: Rect(5, 1, 1, 3),
-    }
+    assert solution == {PATCHES3_ROOTS[name]: rect for name, rect in PATCHES3_ANSWER.items()}
 
 
 @pytest.mark.parametrize("seed", range(20))

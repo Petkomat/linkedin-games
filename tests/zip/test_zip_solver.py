@@ -1,18 +1,8 @@
 from engines.zip import Puzzle, solve
 from tests.helpers import solve_within
 
-
-def assert_is_solution(puzzle: Puzzle, path) -> None:
-    """Check `path` against the rules of Zip, for puzzles with many solutions."""
-    assert path is not None
-    every_cell = [(r, c) for r in range(puzzle.rows) for c in range(puzzle.cols)]
-    assert sorted(path) == every_cell, "must visit every cell exactly once"
-    for a, b in zip(path, path[1:]):
-        assert abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1, f"{a}->{b} is not a step"
-        assert frozenset({a, b}) not in puzzle.walls, f"{a}->{b} crosses a wall"
-    numbers_in_visit_order = [puzzle.numbers[c] for c in path if c in puzzle.numbers]
-    assert numbers_in_visit_order == list(range(1, len(puzzle.numbers) + 1))
-    assert path[0] in puzzle.numbers and path[-1] in puzzle.numbers
+from .boards import ZIP1, ZIP1_ANSWER, ZIP2, ZIP2_ANSWER
+from .rules import assert_is_solution
 
 
 def test_two_adjacent_numbers_are_joined_directly():
@@ -65,58 +55,11 @@ def test_path_never_crosses_a_wall():
 
 
 def test_solves_example_zip1():
-    # examples/zip/zip1.png
-    puzzle = Puzzle(
-        rows=6,
-        cols=6,
-        numbers={
-            (0, 0): 1, (5, 5): 2, (4, 1): 3, (2, 1): 4,
-            (3, 4): 5, (3, 2): 6, (1, 4): 7, (2, 3): 8,
-        },
-    )  # fmt: skip
-
-    assert solve(puzzle) == [
-        (0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0),
-        (5, 1), (5, 2), (5, 3), (5, 4), (5, 5),
-        (4, 5), (4, 4), (4, 3), (4, 2), (4, 1),
-        (3, 1), (2, 1), (1, 1), (0, 1),
-        (0, 2), (0, 3), (0, 4), (0, 5),
-        (1, 5), (2, 5), (3, 5), (3, 4), (3, 3), (3, 2),
-        (2, 2), (1, 2), (1, 3), (1, 4), (2, 4), (2, 3),
-    ]  # fmt: skip
+    assert solve(ZIP1) == ZIP1_ANSWER
 
 
 def test_solves_example_zip2_with_walls():
-    # examples/zip/zip2.jpg
-    puzzle = Puzzle(
-        rows=6,
-        cols=6,
-        numbers={
-            (1, 1): 1, (0, 5): 2, (1, 4): 3, (2, 3): 4,
-            (4, 4): 5, (4, 1): 6, (3, 2): 7, (5, 0): 8,
-        },
-        walls={
-            frozenset({(1, 1), (1, 2)}),
-            frozenset({(1, 2), (1, 3)}),
-            frozenset({(1, 4), (2, 4)}),
-            frozenset({(2, 1), (3, 1)}),
-            frozenset({(2, 2), (3, 2)}),
-            frozenset({(2, 3), (3, 3)}),
-            frozenset({(2, 4), (3, 4)}),
-            frozenset({(3, 1), (4, 1)}),
-            frozenset({(4, 2), (4, 3)}),
-            frozenset({(4, 3), (4, 4)}),
-        },
-    )  # fmt: skip
-
-    assert solve(puzzle) == [
-        (1, 1), (0, 1), (0, 0), (1, 0), (2, 0), (2, 1), (2, 2),
-        (1, 2), (0, 2), (0, 3), (0, 4), (0, 5),
-        (1, 5), (1, 4), (1, 3), (2, 3), (2, 4), (2, 5),
-        (3, 5), (4, 5), (5, 5), (5, 4), (4, 4),
-        (3, 4), (3, 3), (4, 3), (5, 3), (5, 2), (5, 1), (4, 1),
-        (4, 2), (3, 2), (3, 1), (3, 0), (4, 0), (5, 0),
-    ]  # fmt: skip
+    assert solve(ZIP2) == ZIP2_ANSWER
 
 
 def test_solves_a_sparse_8x8_quickly():

@@ -7,6 +7,7 @@ profile with the most cells between them give the lattice.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 import numpy as np
@@ -14,6 +15,7 @@ import numpy as np
 MIN_PITCH = 12  # px; smaller cells could not hold anything readable
 MAX_CELLS = 15
 SQUARE = 0.05  # how far from square (column / row spacing) cells may look
+CROSSED = 0.15  # a grid line crosses a row if it is a ridge for this share of the row's height
 
 
 @dataclass(frozen=True)
@@ -68,6 +70,17 @@ class GridGeometry:
         x0, y0, x1, y1 = self.box(row, col, inset=inset)
         return rgb[round(y0) : round(y1), round(x0) : round(x1)]
 
+    def borders(self) -> Iterator[tuple[tuple[int, int], tuple[int, int], tuple[float, float]]]:
+        """Every pair of side-by-side or stacked cells, with the pixel (x, y) of
+        the middle of the border between them."""
+        for r in range(self.rows):
+            for c in range(self.cols):
+                x, y = self.center(r, c)
+                if c + 1 < self.cols:
+                    yield (r, c), (r, c + 1), (x + self.xs.pitch / 2, y)
+                if r + 1 < self.rows:
+                    yield (r, c), (r + 1, c), (x, y + self.ys.pitch / 2)
+
 
 def find_grid(rgb: np.ndarray) -> GridGeometry:
     """Locate the grid: the evenly spaced lines with the most cells between them.
@@ -109,7 +122,43 @@ def _find_lattices(gray: np.ndarray) -> GridGeometry:
     # vertical ridges only between the horizontal ones, so other UI is ignored.
     ys = _fit_lattice(_peaks(_ridge_profile(gray[:, _span(xs)].T)))
     xs = _fit_lattice(_peaks(_ridge_profile(gray[_span(ys), :])))
+    ys = _drop_extra_ends(gray, xs, ys)
+    xs = _drop_extra_ends(gray.T, ys, xs)
     return GridGeometry(xs, ys)
+
+
+def _drop_extra_ends(gray: np.ndarray, columns: Lattice, rows: Lattice) -> Lattice:
+    """`rows` without the end rows that `columns` don't run through.
+
+    LinkedIn boards are square. More rows than columns means a line of the UI
+    above or below the board happens to sit one row's height away (zip2's
+    buttons), and the board's columns don't run through that extra row.
+    """
+    for last in (True, False):
+        while rows.cells > columns.cells and not _crossed(gray, columns, _end_band(rows, last)):
+            start = rows.start if last else rows.start + rows.pitch
+            rows = Lattice(start, rows.pitch, rows.cells - 1)
+    return rows
+
+
+def _end_band(lattice: Lattice, last: bool) -> slice:
+    """Pixel rows of the lattice's first or last cell."""
+    start = lattice.end - lattice.pitch if last else lattice.start
+    return slice(round(start), round(start + lattice.pitch))
+
+
+def _crossed(gray: np.ndarray, columns: Lattice, band: slice) -> bool:
+    """Do at least half of the column lines show up as ridges within the pixel
+    rows `band`? Lines may be partly hidden by what's drawn on the board."""
+    rows = gray[band]
+    profile = _ridge_profile(rows)
+    reach = max(2, round(0.05 * columns.pitch))
+    lines = [round(columns.start + k * columns.pitch) for k in range(columns.cells + 1)]
+    seen = sum(
+        profile[max(0, x - reach) : x + reach + 1].max(initial=0) >= CROSSED * rows.shape[0]
+        for x in lines
+    )
+    return 2 * seen >= len(lines)
 
 
 def _span(lattice: Lattice) -> slice:

@@ -10,6 +10,9 @@ removal propagates:
     dead end.
 Once nothing more is forced, we branch on the empty cell with the fewest
 candidates, as in the Patches solver. The search stops at the first solution.
+
+Every cell that is settled (left with one candidate), givens included, and
+every cell emptied again when a guess fails is written to `trace`.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from dataclasses import dataclass
 from functools import cache
 
 from ..common.bits import set_bits
+from ..common.trace import Trace
 from .model import Grid, Puzzle
 
 
@@ -28,42 +32,45 @@ class _Geometry:
     peers: tuple[tuple[int, ...], ...]  # per cell: every other cell sharing a unit
 
 
-def solve(puzzle: Puzzle) -> Grid | None:
+def solve(puzzle: Puzzle, trace: Trace | None = None) -> Grid | None:
+    trace = Trace() if trace is None else trace
     n = puzzle.size
     geo = _geometry(n, *puzzle.box)
     candidates = [(1 << (n + 1)) - 2] * (n * n)  # bits 1..n
     for cell in range(n * n):
         digit = puzzle.grid[cell // n][cell % n]
-        if digit and not _assign(candidates, cell, digit, geo):
+        if digit and not _assign(candidates, cell, digit, geo, trace):
             return None  # the givens contradict each other
-    solved = _search(candidates, geo)
+    solved = _search(candidates, geo, trace)
     if solved is None:
         return None
     digits = [mask.bit_length() - 1 for mask in solved]
     return tuple(tuple(digits[r * n : (r + 1) * n]) for r in range(n))
 
 
-def _search(candidates: list[int], geo: _Geometry) -> list[int] | None:
+def _search(candidates: list[int], geo: _Geometry, trace: Trace) -> list[int] | None:
     open_cells = [i for i, mask in enumerate(candidates) if mask & (mask - 1)]
     if not open_cells:
         return candidates
     cell = min(open_cells, key=lambda i: candidates[i].bit_count())
+    mark = trace.mark()
     for digit in set_bits(candidates[cell]):
         trial = candidates.copy()
-        if _assign(trial, cell, digit, geo):
-            solved = _search(trial, geo)
+        if _assign(trial, cell, digit, geo, trace):
+            solved = _search(trial, geo, trace)
             if solved is not None:
                 return solved
+        trace.back_to(mark)
     return None
 
 
-def _assign(candidates: list[int], cell: int, digit: int, geo: _Geometry) -> bool:
+def _assign(candidates: list[int], cell: int, digit: int, geo: _Geometry, trace: Trace) -> bool:
     """Make `digit` the only candidate of `cell`; False on a contradiction."""
     others = candidates[cell] & ~(1 << digit)
-    return all(_eliminate(candidates, cell, d, geo) for d in set_bits(others))
+    return all(_eliminate(candidates, cell, d, geo, trace) for d in set_bits(others))
 
 
-def _eliminate(candidates: list[int], cell: int, digit: int, geo: _Geometry) -> bool:
+def _eliminate(candidates: list[int], cell: int, digit: int, geo: _Geometry, trace: Trace) -> bool:
     """Rule `digit` out for `cell` and propagate; False on a contradiction."""
     bit = 1 << digit
     if not candidates[cell] & bit:
@@ -74,13 +81,14 @@ def _eliminate(candidates: list[int], cell: int, digit: int, geo: _Geometry) -> 
         return False
     if not left & (left - 1):  # naked single: clear it from the peers
         last = left.bit_length() - 1
-        if not all(_eliminate(candidates, p, last, geo) for p in geo.peers[cell]):
+        trace.put((divmod(cell, geo.n), last))
+        if not all(_eliminate(candidates, p, last, geo, trace) for p in geo.peers[cell]):
             return False
     for unit in geo.units_of[cell]:  # hidden single: where can `digit` still go?
         places = [c for c in unit if candidates[c] & bit]
         if not places:
             return False
-        if len(places) == 1 and not _assign(candidates, places[0], digit, geo):
+        if len(places) == 1 and not _assign(candidates, places[0], digit, geo, trace):
             return False
     return True
 

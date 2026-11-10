@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from ..common.trace import Trace
 from .model import Cell, Puzzle
 
 
@@ -32,6 +33,54 @@ def solve(puzzle: Puzzle) -> list[Cell] | None:
     except _Contradiction:
         return None
     return None if solved is None else [board.cell(i) for i in solved.path()]
+
+
+def walk(puzzle: Puzzle, trace: Trace | None = None) -> list[Cell] | None:
+    """Find the path by drawing it from 1, the way a player does.
+
+    The path's end moves on one cell at a time, and backs up when every way
+    on fails. The same propagation as in `solve` looks ahead: a step whose
+    forced links lead to a contradiction is never taken, and links forced
+    further along are simply followed. Every cell the end moves onto, and
+    every cell it backs off, is written to `trace`.
+
+    Branching only at the path's end, not at the most constrained cell, makes
+    this slower than `solve` on big, sparse boards.
+    """
+    trace = Trace() if trace is None else trace
+    board = _Board(puzzle)
+    try:
+        state = _State(board)
+        state.propagate(range(board.size))
+    except _Contradiction:
+        return None
+    trace.put(board.cell(board.start))
+    path = _draw(state, [board.start], trace)
+    return None if path is None else [board.cell(i) for i in path]
+
+
+def _draw(state: _State, path: list[int], trace: Trace) -> list[int] | None:
+    """`path` (the cells drawn so far, from 1) extended to a solution, or None."""
+    if len(path) == state.board.size:
+        return path
+    end = path[-1]
+    behind = path[-2] if len(path) > 1 else None
+    forced = [cell for cell in state.links[end] if cell != behind]
+    mark = trace.mark()
+    for step in forced or state.options(end):
+        attempt = state
+        if not forced:
+            attempt = state.copy()
+            try:
+                attempt.propagate(attempt.link(end, step))
+            except _Contradiction:
+                continue  # seen to fail at a glance, so never drawn
+        trace.put(state.board.cell(step))
+        found = _draw(attempt, [*path, step], trace)
+        if found is not None:
+            return found
+        trace.back_to(mark)
+    return None
 
 
 class _Contradiction(Exception):

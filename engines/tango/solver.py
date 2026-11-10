@@ -10,7 +10,9 @@ which all remaining patterns agree is fixed, which narrows the crossing line,
 and so on. A line with no pattern left is a dead end.
 
 Search: as in the other solvers, branch on the line with the fewest patterns
-left, trying each of them. The search stops at the first solution.
+left, trying each of them. The search stops at the first solution. Every cell
+it fills in, by deduction or by a guess, and every cell it clears again when a
+guess fails is written to `trace`.
 """
 
 from __future__ import annotations
@@ -18,12 +20,14 @@ from __future__ import annotations
 from functools import cache, reduce
 from operator import and_, or_
 
+from ..common.trace import Trace
 from .model import Grid, Puzzle, Symbol
 
 Cells = list[int | None]  # per cell (row-major): 1 sun, 0 moon, None unknown
 
 
-def solve(puzzle: Puzzle) -> Grid | None:
+def solve(puzzle: Puzzle, trace: Trace | None = None) -> Grid | None:
+    trace = Trace() if trace is None else trace
     n = puzzle.size
     if n % 2:
         return None
@@ -52,6 +56,7 @@ def solve(puzzle: Puzzle) -> Grid | None:
             for i, cell in enumerate(lines[line]):
                 if cells[cell] is None and (always >> i & 1 or not ever >> i & 1):
                     cells[cell] = always >> i & 1
+                    trace.put((divmod(cell, n), Symbol.SUN if cells[cell] else Symbol.MOON))
                     queue.update(crossing[cell])
         return True
 
@@ -60,6 +65,7 @@ def solve(puzzle: Puzzle) -> Grid | None:
         if not open_lines:
             return cells
         line = min(open_lines, key=lambda line: len(patterns[line]))
+        mark = trace.mark()
         for pattern in patterns[line]:
             trial_patterns, trial_cells = patterns.copy(), cells.copy()
             trial_patterns[line] = [pattern]
@@ -67,6 +73,7 @@ def solve(puzzle: Puzzle) -> Grid | None:
                 solved = search(trial_patterns, trial_cells)
                 if solved is not None:
                     return solved
+            trace.back_to(mark)
         return None
 
     if not propagate(patterns, cells, set(range(2 * n))):

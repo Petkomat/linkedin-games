@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -44,3 +45,24 @@ def solve_within(solve: Callable[[Any], Any], puzzle: Any, seconds: float) -> An
     if worker.is_alive():
         pytest.fail(f"solve() took longer than {seconds}s")
     return result["answer"]
+
+
+def random_path(n: int, rng: random.Random) -> list[tuple[int, int]]:
+    """A random path through every cell of an n x n grid, moving up, down, left or right.
+
+    Starts as a zig-zag and is scrambled by "backbite" moves: the path's end
+    jumps to a neighbour on the path, and the stretch in between is reversed.
+    """
+    path = [(r, c if r % 2 == 0 else n - 1 - c) for r in range(n) for c in range(n)]
+    for _ in range(20 * n * n):
+        if rng.random() < 0.5:
+            path.reverse()
+        r, c = path[-1]
+        steps = [
+            step
+            for step in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1))
+            if 0 <= step[0] < n and 0 <= step[1] < n and step != path[-2]
+        ]
+        i = path.index(rng.choice(steps))
+        path[i + 1 :] = path[i + 1 :][::-1]  # still visits every cell once
+    return path

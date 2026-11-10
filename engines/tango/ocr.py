@@ -13,13 +13,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
 from dataclasses import dataclass
 
 import numpy as np
 
 from ..vision import GridGeometry, ImageSource, find_grid, load_rgb
-from .model import Cell, Edge, Puzzle, Symbol
+from .model import Puzzle, Symbol
 
 CELL_INSET = 0.15  # of the pitch
 SATURATED = 80  # max - min channel above this counts as icon colour
@@ -50,28 +49,13 @@ def scan(image: ImageSource) -> Scan:
         for r in range(grid.rows)
     )
     signs = {"=": set(), "x": set()}
-    for edge, (x, y) in _borders(grid):
+    for a, b, (x, y) in grid.borders():
         reach = SIGN_REACH * grid.pitch
         window = rgb[round(y - reach) : round(y + reach) + 1, round(x - reach) : round(x + reach) + 1]
         sign = _sign(window)
         if sign:
-            signs[sign].add(edge)
+            signs[sign].add(frozenset((a, b)))
     return Scan(Puzzle(givens, frozenset(signs["="]), frozenset(signs["x"])), grid)
-
-
-def _borders(grid: GridGeometry) -> Iterator[tuple[Edge, tuple[float, float]]]:
-    """Every pair of neighbouring cells, with the pixel midpoint of their shared border."""
-    for r in range(grid.rows):
-        for c in range(grid.cols):
-            x, y = grid.center(r, c)
-            if c + 1 < grid.cols:
-                yield _edge((r, c), (r, c + 1)), (x + grid.xs.pitch / 2, y)
-            if r + 1 < grid.rows:
-                yield _edge((r, c), (r + 1, c)), (x, y + grid.ys.pitch / 2)
-
-
-def _edge(a: Cell, b: Cell) -> Edge:
-    return frozenset((a, b))
 
 
 def _sign(window: np.ndarray) -> str | None:

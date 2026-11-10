@@ -1,7 +1,7 @@
 """Random solvable Wend boards for stress tests.
 
-A random path through every cell of the grid (a zig-zag scrambled by
-"backbite" moves) is cut into pieces of 3 to 8 tiles, and a random dictionary
+A random path through every cell of the grid (`tests.helpers.random_path`)
+is cut into pieces of 3 to 8 tiles, and a random dictionary
 word of the right length is written along each piece.
 """
 
@@ -12,13 +12,14 @@ from functools import cache
 
 from engines.wend import Puzzle
 from engines.wend.dictionary import words_of_length
+from tests.helpers import random_path
 
 SHORTEST, LONGEST = 3, 8
 
 
 def random_puzzle(n: int, seed: int) -> Puzzle:
     rng = random.Random(seed)
-    path = _random_path(n, rng)
+    path = random_path(n, rng)
     lengths = _random_lengths(len(path), rng)
     board = [[""] * n for _ in range(n)]
     start = 0
@@ -43,19 +44,3 @@ def _random_lengths(total: int, rng: random.Random) -> list[int]:
             lengths.append(length)
             total -= length
     return lengths
-
-
-def _random_path(n: int, rng: random.Random) -> list[tuple[int, int]]:
-    path = [(r, c if r % 2 == 0 else n - 1 - c) for r in range(n) for c in range(n)]
-    for _ in range(20 * n * n):
-        if rng.random() < 0.5:
-            path.reverse()
-        r, c = path[-1]
-        steps = [
-            step
-            for step in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1))
-            if 0 <= step[0] < n and 0 <= step[1] < n and step != path[-2]
-        ]
-        i = path.index(rng.choice(steps))
-        path[i + 1 :] = path[i + 1 :][::-1]  # still visits every cell once
-    return path
