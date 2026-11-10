@@ -1,5 +1,4 @@
 # linkedin-games
-Let's cheat a bit :rocket:
 
 Solvers for the LinkedIn daily games: screenshot in, solved screenshot out,
 or play today's game in Chrome.
