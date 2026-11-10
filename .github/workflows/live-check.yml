@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.3  # publishes exact versions only
       - run: uv sync --extra browser
       - run: uv run --extra browser python -m engines.play.check --out checks
       - uses: actions/upload-artifact@v7
