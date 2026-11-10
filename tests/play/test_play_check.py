@@ -28,6 +28,13 @@ def test_a_start_screen_is_clicked_away_first(browser, tmp_path):
     assert check_game(page, GAMES["queens"], tmp_path, start_wait=5, board_wait=5)
 
 
+def test_an_intro_and_then_a_start_screen_are_both_clicked_away(browser, tmp_path):
+    # Mini Sudoku showed guests an intro ("Solve now") on GitHub's machines.
+    page = page_showing(browser, example("sudoku", "sudoku1.png"), behind_start_screen=True, behind_intro=True)
+
+    assert check_game(page, GAMES["sudoku"], tmp_path, start_wait=5, board_wait=5)
+
+
 def test_a_page_without_a_board_fails_and_keeps_a_screenshot_of_what_it_saw(browser, tmp_path):
     page = browser.new_page()
     page.set_content("<p>Sign in to play</p>")

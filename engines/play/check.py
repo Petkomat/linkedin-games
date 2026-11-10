@@ -21,8 +21,12 @@ from .browser import Player
 from .games import GAMES, Game
 from .report import report
 
-START = "Start game"  # guests see a start screen before the board
-START_WAIT = 10.0  # s to look for it
+# Guests see a start screen before the board, and on some machines Mini Sudoku
+# shows an intro before that.
+START_BUTTONS = ("Start game", "Solve now")
+START_WAIT = 10.0  # s to look for the first one
+NEXT_SCREEN_WAIT = 3.0  # s to look for another one after a click
+MAX_SCREENS = 3
 BOARD_WAIT = 30.0  # s to wait for a board that reads and solves
 VIEWPORT = {"width": 1280, "height": 1600}  # tall enough for Wend's word lengths under the board
 
@@ -71,15 +75,25 @@ def check_game(page: Page, game: Game, folder: Path, start_wait: float = START_W
 
 
 def _start(page: Page, seconds: float) -> None:
-    """Click the start screen's button, if one shows up within `seconds`."""
+    """Click through the start screens: whichever START_BUTTONS shows up, the
+    first within `seconds` and each next one within NEXT_SCREEN_WAIT."""
+    for _ in range(MAX_SCREENS):
+        if not _click_start_button(page, seconds):
+            return
+        seconds = NEXT_SCREEN_WAIT
+
+
+def _click_start_button(page: Page, seconds: float) -> bool:
     deadline = time.monotonic() + seconds
     while True:
-        button = page.get_by_text(START, exact=True)
-        if button.count():
-            button.first.click()
-            return
+        for label in START_BUTTONS:
+            button = page.get_by_text(label, exact=True).filter(visible=True)  # pages hide spare copies
+            if button.count():
+                button.first.click()
+                button.first.wait_for(state="detached", timeout=NEXT_SCREEN_WAIT * 1000)
+                return True
         if time.monotonic() >= deadline:
-            return
+            return False
         time.sleep(0.5)
 
 
