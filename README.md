@@ -1,5 +1,7 @@
 # linkedin-games
 
+**LinkedIn games: Think like robot, move like human**
+
 Solvers for the LinkedIn daily games: screenshot in, solved screenshot out,
 or play today's game in Chrome.
 
