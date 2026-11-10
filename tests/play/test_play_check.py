@@ -35,6 +35,22 @@ def test_an_intro_and_then_a_start_screen_are_both_clicked_away(browser, tmp_pat
     assert check_game(page, GAMES["sudoku"], tmp_path, start_wait=5, board_wait=5)
 
 
+def test_a_start_screen_that_shows_up_late_is_still_clicked_away(browser, tmp_path):
+    # GitHub's machines are slow: the screen may come after the first look for it.
+    page = page_showing(browser, example("queens", "queens1.png"), behind_start_screen=True, screens_after_ms=2500)
+
+    assert check_game(page, GAMES["queens"], tmp_path, start_wait=1, board_wait=8)
+
+
+def test_a_start_screen_inside_an_iframe_is_clicked_away(browser, tmp_path):
+    # LinkedIn runs Mini Sudoku, intro included, in an iframe.
+    page = page_showing(
+        browser, example("sudoku", "sudoku1.png"), behind_start_screen=True, behind_intro=True, in_iframe=True
+    )
+
+    assert check_game(page, GAMES["sudoku"], tmp_path, start_wait=5, board_wait=8)
+
+
 def test_a_page_without_a_board_fails_and_keeps_a_screenshot_of_what_it_saw(browser, tmp_path):
     page = browser.new_page()
     page.set_content("<p>Sign in to play</p>")

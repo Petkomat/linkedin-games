@@ -15,6 +15,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, sync_playwright
 
 from .browser import Player
@@ -26,6 +27,7 @@ from .report import report
 START_BUTTONS = ("Start game", "Solve now")
 START_WAIT = 10.0  # s to look for the first one
 NEXT_SCREEN_WAIT = 3.0  # s to look for another one after a click
+LOOK_AGAIN = 3.0  # s of reading the board before looking for a late start screen again
 MAX_SCREENS = 3
 BOARD_WAIT = 30.0  # s to wait for a board that reads and solves
 VIEWPORT = {"width": 1280, "height": 1600}  # tall enough for Wend's word lengths under the board
@@ -51,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{name:8} {'ok' if solved else 'FAILED'}", flush=True)
             if not solved:
                 failed.append(name)
+                print(f"         {_describe(page)}", flush=True)
             page.close()
         browser.close()
     if failed:
@@ -60,11 +63,19 @@ def main(argv: list[str] | None = None) -> int:
 
 def check_game(page: Page, game: Game, folder: Path, start_wait: float = START_WAIT, board_wait: float = BOARD_WAIT) -> bool:
     """Start the game on `page` if it shows a start screen, then read and solve
-    its board. Saves <folder>/<game>.png, and <game>.md if solved."""
-    _start(page, start_wait)
-    page.mouse.move(0, 0)  # a pointer resting over a cell highlights it
+    its board. Saves <folder>/<game>.png, and <game>.md if solved.
+
+    A slow page may show its start screen only later, so while waiting for
+    the board it keeps clicking any start screen that turns up."""
     player = Player(page)
-    board = player.wait_for_board(game, board_wait)
+    deadline = time.monotonic() + board_wait
+    _start(page, start_wait)
+    while True:
+        page.mouse.move(0, 0)  # a pointer resting over a cell highlights it
+        board = player.wait_for_board(game, min(LOOK_AGAIN, max(0.0, deadline - time.monotonic())))
+        if board is not None or time.monotonic() >= deadline:
+            break
+        _start(page, 0)
     folder.mkdir(parents=True, exist_ok=True)
     player.screenshot().save(folder / f"{game.name}.png")
     if board is None:
@@ -72,6 +83,13 @@ def check_game(page: Page, game: Game, folder: Path, start_wait: float = START_W
     seen, _ = board
     (folder / f"{game.name}.md").write_text(report(game, seen.puzzle, datetime.now()), encoding="utf-8")
     return True
+
+
+def _describe(page: Page) -> str:
+    """Where the page is and what can be clicked on it, for the log of a failed check."""
+    texts = page.locator("button, a, [role=button], [tabindex]").filter(visible=True).all_inner_texts()
+    short = sorted({" ".join(t.split()) for t in texts if 0 < len(t.strip()) <= 40})
+    return f"at {page.url}; clickable: {', '.join(short[:25]) or 'nothing'}"
 
 
 def _start(page: Page, seconds: float) -> None:
@@ -86,11 +104,16 @@ def _start(page: Page, seconds: float) -> None:
 def _click_start_button(page: Page, seconds: float) -> bool:
     deadline = time.monotonic() + seconds
     while True:
-        for label in START_BUTTONS:
-            button = page.get_by_text(label, exact=True).filter(visible=True)  # pages hide spare copies
-            if button.count():
-                button.first.click()
-                button.first.wait_for(state="detached", timeout=NEXT_SCREEN_WAIT * 1000)
+        for frame in page.frames:  # Mini Sudoku runs in an iframe
+            for label in START_BUTTONS:
+                button = frame.get_by_text(label, exact=True).filter(visible=True)  # pages hide spare copies
+                try:
+                    if not button.count():
+                        continue
+                    button.first.click()
+                    button.first.wait_for(state="detached", timeout=NEXT_SCREEN_WAIT * 1000)
+                except PlaywrightError:  # tracking and captcha iframes come and go
+                    continue
                 return True
         if time.monotonic() >= deadline:
             return False

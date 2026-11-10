@@ -98,9 +98,12 @@ sits in an iframe.
 `uv run --extra browser python -m engines.play.check [game ...]` checks that
 the solvers still work on LinkedIn without playing anything. It opens each
 game as a guest (not logged in) in headless Chrome and clicks through the
-guests' start screens: "Start game", and on GitHub's machines an intro
-("Solve now") before Mini Sudoku. It moves the mouse aside, because a pointer
-resting on a cell highlights it, then reads and solves the board. It saves `checks/<game>.png`
+guests' start screens. One is "Start game"; Mini Sudoku also has an intro,
+"Solve now", inside an iframe. Start screens can turn up late, so it keeps
+looking for them while it waits for the board. It moves the mouse aside,
+because a pointer resting on a cell highlights it, then reads and solves the
+board. When a game fails, the log shows the page's address and its clickable
+texts. It saves `checks/<game>.png`
 and `.md`, and exits with 1 if any game fails.
 
 GitHub Actions runs it every Sunday and Wednesday at 10:00 UTC, and on demand

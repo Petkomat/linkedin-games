@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 
 MIN_PITCH = 12  # px; smaller cells could not hold anything readable
+MIN_CELLS = 4  # no LinkedIn board is smaller; fewer evenly spaced lines can be a line of text
 MAX_CELLS = 15
 SQUARE = 0.05  # how far from square (column / row spacing) cells may look
 CROSSED = 0.15  # a grid line crosses a row if it is a ridge for this share of the row's height
@@ -93,14 +94,21 @@ def find_grid(rgb: np.ndarray) -> GridGeometry:
     either the full-size cells aren't, or it is a bigger square board.
     """
     gray = rgb.mean(axis=2)
-    grid = _find_lattices(gray)
-    try:
-        half = _find_lattices(_half_size(gray))
-    except ValueError:
-        return grid
-    if _has_square_cells(half) and (not _has_square_cells(grid) or _bigger_board(half, grid)):
-        return GridGeometry(_doubled(half.xs), _doubled(half.ys))
+    grid = _lattices_or_none(gray)
+    half = _lattices_or_none(_half_size(gray))
+    if half is not None and _has_square_cells(half):
+        if grid is None or not _has_square_cells(grid) or _bigger_board(half, grid):
+            return GridGeometry(_doubled(half.xs), _doubled(half.ys))
+    if grid is None:
+        raise ValueError("could not find a grid in the image")
     return grid
+
+
+def _lattices_or_none(gray: np.ndarray) -> GridGeometry | None:
+    try:
+        return _find_lattices(gray)
+    except ValueError:
+        return None
 
 
 def _has_square_cells(grid: GridGeometry) -> bool:
@@ -189,6 +197,8 @@ def _ridge_profile(gray: np.ndarray, contrast: float = 6, reaches: tuple[int, ..
 
 def _peaks(profile: np.ndarray, rel: float = 0.25) -> list[float]:
     """Centres of runs of columns whose ridge count is a good part of the max."""
+    if not profile.any():  # a blank image, e.g. a page still loading
+        raise ValueError("could not find a grid in the image")
     strong = np.flatnonzero(profile >= rel * profile.max())
     peaks, run = [], [strong[0]]
     for i in strong[1:]:
@@ -215,6 +225,6 @@ def _fit_lattice(peaks: list[float]) -> Lattice:
                 if all(min(abs(p - line) for p in peaks) <= tol for line in lines):
                     if best is None or cells > best.cells:
                         best = Lattice(first, pitch, cells)
-    if best is None:
+    if best is None or best.cells < MIN_CELLS:
         raise ValueError("could not find a grid in the image")
     return best
