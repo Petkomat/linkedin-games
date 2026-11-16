@@ -6,11 +6,11 @@ import pytest
 from engines.play.games import GAMES
 from tests.helpers import example
 
-from .pages import page_showing
+from .pages import page_file, page_showing
 
 pytest.importorskip("playwright.sync_api", reason="needs: uv sync --extra browser")
 
-from engines.play.check import check_game  # noqa: E402
+from engines.play.check import check_all, check_game  # noqa: E402
 
 
 def test_a_board_that_reads_and_solves_passes_and_its_solution_is_saved(browser, tmp_path):
@@ -58,3 +58,19 @@ def test_a_page_without_a_board_fails_and_keeps_a_screenshot_of_what_it_saw(brow
     assert not check_game(page, GAMES["zip"], tmp_path, start_wait=0, board_wait=2)
     assert (tmp_path / "zip.png").exists()
     assert not (tmp_path / "zip.md").exists()
+
+
+def test_every_game_is_checked_on_its_own_page_and_reported_by_name(browser, tmp_path):
+    # What the Watcher runs every day: one verdict per game.
+    blank = tmp_path / "blank.html"
+    blank.write_text("<p>Sign in to play</p>", encoding="utf-8")
+    urls = {
+        "queens": page_file(tmp_path, example("queens", "queens1.png"), behind_start_screen=True),
+        "sudoku": page_file(tmp_path, example("sudoku", "sudoku1.png")),
+        "zip": blank.as_uri(),
+    }
+
+    verdicts = check_all(["queens", "sudoku", "zip"], tmp_path / "out", browser, urls, start_wait=1, board_wait=5)
+
+    assert verdicts == {"queens": True, "sudoku": True, "zip": False}
+    assert (tmp_path / "out" / "zip.png").exists(), "what the failed check saw"

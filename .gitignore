@@ -223,3 +223,9 @@ __marimo__/
 plays/
 /*_played.png
 checks/
+
+# guest plays and downloads in the agents' worktrees
+.team/
+
+# the owner's own script for playing every game in a row
+/play-all.ps1

@@ -1,4 +1,4 @@
-"""uv run --extra browser python -m engines.play <game> [--profile DIR]
+"""uv run --extra browser python -m engines.play <game> [--profile DIR] [--close-after S]
 uv run --extra browser python -m engines.play --login
 
 Opens today's game on LinkedIn in Chrome, reads the board from a screenshot,
@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 
 from playwright.sync_api import Page, sync_playwright
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from .browser import Player
 from .games import GAMES, Game
@@ -50,6 +51,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--shortest-pause", type=float, default=1.5, help="never shorter than this (default 1.5)")
     parser.add_argument("--wait", type=float, default=60, help="seconds to wait for the board")
     parser.add_argument(
+        "--close-after", type=float, metavar="S",
+        help="close the browser S seconds after the end (default: wait until you close it)"
+    )
+    parser.add_argument(
         "-o", "--output", type=Path,
         help="final screenshot, with the solution next to it as .md; default plays/<game>/<date>_<time>.png"
     )
@@ -60,6 +65,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("name a game, or use --login")
     if args.shortest_pause > args.pause:
         parser.error("--shortest-pause can't be longer than --pause")
+    if args.close_after is not None and args.close_after < 0:
+        parser.error("--close-after can't be negative")
     game = GAMES[args.game]
     started = datetime.now()
     output = args.output or screenshot_path(game.name, started)
@@ -76,7 +83,8 @@ def main(argv: list[str] | None = None) -> int:
         if board is None:
             player.screenshot().save(output)
             print(f"No solvable board on screen after {args.wait:.0f} s; see {output}")
-            _leave_open(page)
+            leave_open(page, args.close_after)
+            browser.close()
             return 1
         seen, actions = board
         solution = output.with_suffix(".md")
@@ -86,7 +94,8 @@ def main(argv: list[str] | None = None) -> int:
         time.sleep(RESULT_WAIT)  # let the game take the last move and show its result
         player.screenshot().save(output)
         print(f"Done; the screen is in {output}")
-        _leave_open(page)
+        leave_open(page, args.close_after)
+        browser.close()
     return 0
 
 
@@ -96,11 +105,19 @@ def screenshot_path(game: str, started: datetime) -> Path:
     return PLAYS / game / f"{started:%Y-%m-%d_%H-%M-%S}.png"
 
 
-def _leave_open(page: Page) -> None:
-    """Keep the browser open until the user closes its window (or presses Ctrl+C)."""
-    print("Close the browser window when you're done looking.")
+def leave_open(page: Page, close_after: float | None = None) -> None:
+    """Keep the page open until the user closes its window (or presses Ctrl+C).
+    With close_after, close it after that many seconds instead, so games can be
+    played one after another without anyone at the keyboard."""
+    if page.is_closed():
+        return
+    if close_after is None:
+        print("Close the browser window when you're done looking.")
     try:
-        page.wait_for_event("close", timeout=0)
+        # timeout=0 waits for ever, so a zero close_after becomes 1 ms
+        page.wait_for_event("close", timeout=0 if close_after is None else max(close_after * 1000, 1))
+    except PlaywrightTimeoutError:
+        page.close()
     except KeyboardInterrupt:
         pass
 

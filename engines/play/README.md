@@ -27,7 +27,8 @@ uv run --extra browser python -m engines.play queens     # or tango, sudoku, pat
    solved, before the first move. `plays/` is
    in `.gitignore`, because the screenshots show your LinkedIn page. The
    browser stays open until you close its window (or press Ctrl+C), so nothing
-   is cut off and you can look at the result.
+   is cut off and you can look at the result. `--close-after 5` closes it
+   five seconds after the end instead.
 
 Playwright is an optional extra, so the solvers still need only numpy and
 Pillow. It drives the Chrome that is already installed, so it downloads no
@@ -82,6 +83,19 @@ certain:
 - dragging back in Zip.
 
 Each one is a constant or a small function in that game's `moves.py`.
+
+## All games in a row
+
+[`play-all.ps1`](../../play-all.ps1), in the repository root, plays the games
+one after another, for example for a screen recording. Each game is its own
+run of the command above, with `--close-after`, so the next one starts once
+the previous browser has closed. A game that fails, such as one already
+played today, is listed at the end, and the others still run.
+
+```
+.\play-all.ps1                       # queens, tango, zip, sudoku, patches, wend
+.\play-all.ps1 zip queens -Show 10   # these, in this order; each result stays 10 s
+```
 
 ## Coordinates
 

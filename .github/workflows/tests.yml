@@ -1,0 +1,19 @@
+# The whole test suite, on every PR and on main. The browser tests use local
+# pages in headless Chrome; nothing opens LinkedIn.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest  # comes with Google Chrome
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: uv sync --extra browser
+      - run: uv run --extra browser playwright install ffmpeg  # the guest-play test films its game
+      - run: uv run --extra browser pytest

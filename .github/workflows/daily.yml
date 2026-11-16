@@ -1,0 +1,36 @@
+# The daily guest run of the agent team (see team/README.md): the Scout looks
+# for new games on LinkedIn's games hub, and the Watcher reads and solves
+# today's board of every built game. Both file their findings as issues; the
+# orchestrator on the owner's machine picks them up. Nothing is ever played,
+# and LinkedIn is only visited as a guest.
+name: Daily
+
+on:
+  schedule:
+    - cron: "30 8 * * *"  # after LinkedIn's midnight-Pacific reset, then a random wait
+  workflow_dispatch:  # and by hand, from the Actions tab, without the wait
+
+permissions:
+  contents: read
+  issues: write  # the Scout's and the Watcher's issues
+  actions: read  # the Watcher reads the test runs on main
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest  # comes with Google Chrome
+    timeout-minutes: 150
+    steps:
+      - name: Wait a random 0 to 2 hours, so the visits don't come at the same minute every day
+        if: github.event_name == 'schedule'
+        run: sleep $((RANDOM % 7200))
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3  # publishes exact versions only
+      - run: uv sync --extra browser
+      - run: uv run --extra browser python -m team.daily --out daily
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: daily
+          path: daily/

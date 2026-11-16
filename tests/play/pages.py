@@ -43,11 +43,33 @@ def page_showing(
     "Start game"; with `behind_intro` too, that only shows after "Solve now".
     `screens_after_ms` delays the start screens, like a slow page, and
     `in_iframe` puts everything in an iframe, as LinkedIn does with Mini Sudoku."""
+    body, viewport = showing(screenshot, SCALE, behind_start_screen, behind_intro, screens_after_ms, in_iframe)
+    page = browser.new_page(device_scale_factor=SCALE, viewport=viewport)
+    page.set_content(body)
+    return page
+
+
+def page_file(folder, screenshot, scale: float = 1, **screens) -> str:
+    """The URL of a page like `page_showing`'s, saved in `folder`, for code that
+    opens its own pages. It shows `screenshot` pixel for pixel on a screen with
+    `scale` device pixels per page pixel (1 unless the browser is told otherwise)."""
+    body, _ = showing(screenshot, scale, **screens)
+    path = folder / f"{screenshot.stem}.html"
+    path.write_text(body, encoding="utf-8")
+    return path.as_uri()
+
+
+def showing(
+    screenshot,
+    scale: float = SCALE,
+    behind_start_screen: bool = False,
+    behind_intro: bool = False,
+    screens_after_ms: int = 0,
+    in_iframe: bool = False,
+) -> tuple[str, dict]:
+    """The HTML of a page showing `screenshot` pixel for pixel at `scale`, and
+    the viewport it fills."""
     width, height = Image.open(screenshot).size
-    page = browser.new_page(
-        device_scale_factor=SCALE,
-        viewport={"width": ceil(width / SCALE), "height": ceil(height / SCALE)},
-    )
     mime = "jpeg" if screenshot.suffix == ".jpg" else "png"
     data = base64.b64encode(screenshot.read_bytes()).decode()
     hidden = "visibility:hidden;" if behind_start_screen else ""
@@ -55,7 +77,7 @@ def page_showing(
         # draggable=false: pressing on an image and moving would start the
         # browser's own drag-and-drop, which swallows the pointer events.
         f"<body style='margin:0'><img draggable='false' src='data:image/{mime};base64,{data}' "
-        f"style='display:block;{hidden}width:{width / SCALE}px;height:{height / SCALE}px'>"
+        f"style='display:block;{hidden}width:{width / scale}px;height:{height / scale}px'>"
         f"{_later(_start_screens(behind_start_screen, behind_intro), screens_after_ms)}{RECORDER}</body>"
     )
     if in_iframe:
@@ -63,8 +85,7 @@ def page_showing(
             f"<body style='margin:0'><iframe srcdoc='{html.escape(body, quote=True)}' "
             "style='border:0;display:block;width:100vw;height:100vh'></iframe></body>"
         )
-    page.set_content(body)
-    return page
+    return body, {"width": ceil(width / scale), "height": ceil(height / scale)}
 
 
 def _start_screens(behind_start_screen: bool, behind_intro: bool) -> str:
