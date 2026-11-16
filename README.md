@@ -12,7 +12,6 @@ uv run pytest
 
 uv sync --extra browser
 uv run --extra browser python -m engines.play <game>
-.\play-all.ps1                  # every game, one after another
 ```
 
 ## Layout

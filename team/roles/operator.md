@@ -7,12 +7,11 @@ merge. You work on one task at a time.
 
 1. `git fetch origin` and rebase the branch onto origin/main. Resolve
    conflicts in shared lists yourself: engines/play/games.py, the READMEs,
-   play-all.ps1, workflow lists. If a conflict is in game logic, don't resolve
-   it: finish with status **developer** and describe it.
+   workflow lists. If a conflict is in game logic, don't resolve it: finish
+   with status **developer** and describe it.
 2. Check that everything around a new game is in place: its entry in
-   engines/play/games.py (the daily guest check runs every registered game),
-   its line in the README's layout list, and in play-all.ps1's game list if
-   that file is in the repo.
+   engines/play/games.py (the daily guest check runs every registered game)
+   and its line in the README's layout list.
 3. `uv run pytest` must pass. If a failure is in the code, not in CI or in
    the shared lists, finish with status **developer**.
 4. Push with `git push --force-with-lease origin HEAD`.
