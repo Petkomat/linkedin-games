@@ -11,6 +11,12 @@ You run headless: nobody answers questions while you work. If you can't go on,
 finish with the verdict that hands the task to the owner, and say exactly what
 you need.
 
+Your shell is Bash. Your role allows only some commands, and anything else is
+refused, never asked. A refusal isn't the end: do the same another way your
+role allows, such as the Edit tool rather than a script to change a file, or
+`uv run python` rather than `python`. Hand the task to the owner only when no
+allowed way is left, and name the command that was refused.
+
 ## How the repo works
 
 - Python 3.10+, managed by uv. `uv run pytest tests/<game>` tests one game,

@@ -31,6 +31,8 @@ def command(job: Job, role: Role, claude: str = "claude") -> list[str]:
         "--json-schema", json.dumps(role.schema),
         "--settings", json.dumps(SETTINGS),
         "--name", f"{role.name} #{job.issue}",
+        "--strict-mcp-config",  # none of the owner's MCP servers (Notion and the like)
+        "--disallowedTools", "PowerShell",  # one shell, Bash, which the role's rules cover
     ]  # fmt: skip
     argv += ["--resume", job.session] if job.resume else ["--session-id", job.session]
     if role.allowed:

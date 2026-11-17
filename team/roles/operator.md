@@ -11,7 +11,10 @@ merge. You work on one task at a time.
    with status **developer** and describe it.
 2. Check that everything around a new game is in place: its entry in
    engines/play/games.py (the daily guest check runs every registered game)
-   and its line in the README's layout list.
+   and its line in the README's layout list. Change only what merging needs.
+   Don't apply the Reviewer's suggestions: what was reviewed is what the
+   owner approves. Optional ones are the owner's call, and anything that must
+   change goes back with status **developer**.
 3. `uv run pytest` must pass. If a failure is in the code, not in CI or in
    the shared lists, finish with status **developer**.
 4. Push with `git push --force-with-lease origin HEAD`.

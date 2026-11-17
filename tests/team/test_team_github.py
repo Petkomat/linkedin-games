@@ -126,12 +126,15 @@ def test_opening_a_pr_returns_it():
     assert create[create.index("--base") + 1] == "main"
 
 
-def test_reviews_on_a_pr_are_read_with_their_authors():
-    gh = Gh({"pr view 12": {"reviews": [{"author": {"login": "team-bot"}, "body": "Review 1 of 3", "submittedAt": "2026-11-17T11:00:00Z", "state": "COMMENTED"}]}})
+def test_reviews_and_comments_on_a_pr_are_read_with_their_authors_oldest_first():
+    # The owner may answer on the PR rather than on the issue.
+    review = {"author": {"login": "team-bot"}, "body": "Review 1 of 3", "submittedAt": "2026-11-17T11:00:00Z", "state": "COMMENTED"}
+    comment = {"author": {"login": "owner"}, "body": "Run the tests this time.", "createdAt": "2026-11-17T12:00:00Z"}
+    gh = Gh({"pr view 12": {"reviews": [review], "comments": [comment]}})
 
-    [review] = GhGitHub(REPO, gh).reviews_on(12)
+    said = GhGitHub(REPO, gh).reviews_on(12)
 
-    assert (review.author, review.body) == ("team-bot", "Review 1 of 3")
+    assert [(c.author, c.body) for c in said] == [("team-bot", "Review 1 of 3"), ("owner", "Run the tests this time.")]
 
 
 def test_times_are_local():

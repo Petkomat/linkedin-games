@@ -9,7 +9,7 @@ from pathlib import Path
 
 from team.agents import command, outcome
 from team.model import Failed, Job, UsageLimited, Verdict
-from team.roles import DEVELOPER, PROJECT_MANAGER, REVIEWER
+from team.roles import BY_NAME, DEVELOPER, PROJECT_MANAGER, REVIEWER
 
 STREAMS = Path(__file__).parent / "streams"
 
@@ -49,6 +49,21 @@ def test_nothing_outside_a_role_s_list_is_allowed_and_nothing_asks():
     assert "--dangerously-skip-permissions" not in argv
     assert {"Edit", "Write", "Bash(uv run *)", "Bash(git push *)"} <= set(allowed(argv))
     assert not any("merge" in rule or rule == "Bash" for rule in allowed(argv))
+
+
+def test_every_agent_has_one_shell_and_none_of_the_owner_s_mcp_servers():
+    # On Windows, Claude also has a PowerShell tool, which the Bash rules don't cover:
+    # the first Reviewer ran `uv run pytest` there and was refused.
+    for role in BY_NAME.values():
+        argv = command(job(role.name), role)
+        assert option(argv, "--disallowedTools") == "PowerShell"
+        assert "--strict-mcp-config" in argv and "--mcp-config" not in argv
+
+
+def test_every_agent_may_read_with_the_shell_and_the_reviewer_may_run_the_tests():
+    for role in BY_NAME.values():
+        assert {"Bash(grep *)", "Bash(tail *)", "Bash(ls *)", "Bash(sed -n *)"} <= set(allowed(command(job(role.name), role)))
+    assert "Bash(uv run *)" in allowed(command(job("reviewer"), REVIEWER))
 
 
 def test_reviewers_and_the_project_manager_cannot_edit():

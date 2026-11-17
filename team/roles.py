@@ -38,10 +38,11 @@ class Role:
 
 
 READ_GIT = bash("git status", "git diff", "git log", "git show")
+READ_SHELL = bash("ls", "cat", "head", "tail", "grep", "wc", "file", "sed -n", "pwd")  # every role may look
 
 PROJECT_MANAGER = Role(
     "project-manager", TRIAGE, "sonnet", 1, timedelta(minutes=20), worktree=False,
-    allowed=bash("git log"),
+    allowed=(*bash("git log"), *READ_SHELL),
     key="decision", answers=(DEVELOP, OPS, DECLINED, NEEDS_HUMAN, "done"),
     texts=("comment",), required=("comment",),
 )
@@ -49,7 +50,7 @@ DEVELOPER = Role(
     "developer", DEVELOP, "opus", 2, timedelta(hours=4), worktree=True,
     allowed=(
         "Edit", "Write", "Skill",
-        *bash("uv run", "uv sync", "ls", "gh run download", "gh run view"),
+        *bash("uv run", "uv sync", "gh run download", "gh run view"), *READ_SHELL,
         *READ_GIT, *bash("git add", "git commit", "git push", "git restore", "git rm", "git mv", "git fetch"),
     ),
     key="status", answers=("ready", "stuck"),
@@ -57,13 +58,13 @@ DEVELOPER = Role(
 )
 REVIEWER = Role(
     "reviewer", REVIEW, "opus", 2, timedelta(hours=1), worktree=True,
-    allowed=(*bash("uv run", "uv sync", "git fetch"), *READ_GIT),
+    allowed=(*bash("uv run", "uv sync", "git fetch"), *READ_GIT, *READ_SHELL),
     key="decision", answers=("approve", "changes"),
     texts=("review",), required=("review",),
 )
 OPERATOR = Role(
     "operator", OPS, "sonnet", 1, timedelta(hours=1), worktree=True,
-    allowed=("Edit", "Write", *bash("git", "uv run", "uv sync", "gh pr checks", "gh run view", "gh run list", "gh run watch")),
+    allowed=("Edit", "Write", *bash("git", "uv run", "uv sync", "gh pr checks", "gh run view", "gh run list", "gh run watch"), *READ_SHELL),
     key="status", answers=("ready", "developer", "stuck"),
     texts=("summary", "title"), required=("summary",),
 )

@@ -201,7 +201,7 @@ class Orchestrator:
             if pr.owner_review_body:
                 reviews.append(Comment(self.owner, pr.owner_review_body, issue.updated))
             if reviews:
-                parts.append("## Reviews of the PR, oldest first" + PARAGRAPH + PARAGRAPH.join(_quote(c) for c in reviews))
+                parts.append("## Reviews and comments on the PR, oldest first" + PARAGRAPH + PARAGRAPH.join(_quote(c) for c in reviews))
         return PARAGRAPH.join(part for part in parts if part)
 
     def _collect(self, now: datetime) -> None:

@@ -121,8 +121,11 @@ class GhGitHub:
         return pr
 
     def reviews_on(self, pr: int) -> list[Comment]:
-        reviews = self._json("pr", "view", str(pr), "--json", "reviews")["reviews"]
-        return [Comment(r["author"]["login"], r.get("body", ""), _time(r["submittedAt"])) for r in reviews if r.get("submittedAt")]
+        """What was said on a PR, its reviews and its comments, oldest first."""
+        found = self._json("pr", "view", str(pr), "--json", "reviews,comments")
+        said = [Comment(r["author"]["login"], r.get("body", ""), _time(r["submittedAt"])) for r in found.get("reviews") or [] if r.get("submittedAt")]
+        said += [Comment(c["author"]["login"], c.get("body", ""), _time(c["createdAt"])) for c in found.get("comments") or []]
+        return sorted(said, key=lambda c: c.created)
 
     def review(self, pr: int, body: str) -> None:
         self._gh("pr", "review", str(pr), "--comment", "--body-file", "-", stdin=body)
