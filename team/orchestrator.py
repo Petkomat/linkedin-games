@@ -353,7 +353,8 @@ class Orchestrator:
         self._set_stage(issue, stage)
 
     def _ask_owner(self, issue: Issue, text: str, event: dict[str, Any]) -> None:
-        self._record(issue.number, f"@{self.owner} {text}", {**event, "stage": NEEDS_HUMAN})
+        how = f"Answer in a comment here, then remove the `{NEEDS_HUMAN}` label to let the team go on."
+        self._record(issue.number, f"@{self.owner} {text}" + PARAGRAPH + how, {**event, "stage": NEEDS_HUMAN})
         self.github.add_labels(issue.number, {NEEDS_HUMAN})
 
 

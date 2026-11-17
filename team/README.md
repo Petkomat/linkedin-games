@@ -56,6 +56,21 @@ step) with its live log and its prompt, what waits for the owner, the queue,
 and recent runs. Each run's raw output is in ~/.linkedin-games/team/logs, and
 the orchestrator's own log is ~/.linkedin-games/team/orchestrator.log.
 
+## When it's your turn
+
+The team mentions you on GitHub, and the board lists the task under
+"Waiting for you".
+
+- **A PR is ready** (`stage:ready`, with a review request): approve it and
+  the orchestrator merges it within a minute. Request changes instead, and
+  the task goes back to the Developer with your review.
+- **A question** (`needs-human`): the Project Manager can't tell if a game
+  is a logic game, a Developer or Operator is stuck, a run failed twice, the
+  third review didn't approve, or a merge failed. Answer in
+  a comment on the issue, then remove the `needs-human` label. The task goes
+  on where it stopped, and the agent reads your comment. A Developer picks up
+  its own earlier session.
+
 ## Setup
 
 1. A GitHub account for the agents, added to the repo as a collaborator. It

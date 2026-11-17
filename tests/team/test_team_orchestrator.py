@@ -336,6 +336,7 @@ def test_the_owner_lets_a_task_go_on_by_removing_needs_human(github, agents, tea
     number = triaged(github, agents, team, "develop")
     agents.finish("developer", number, Verdict({"status": "stuck", "summary": "May I add scipy?"}))
     team.tick(T0)
+    assert "remove the `needs-human` label" in github.comments_on(number)[-1].body, "the owner is told how"
     github.add_comment(number, "owner", "No scipy; write the convolution with numpy.")
     github.remove_labels(number, {"needs-human"})
 
