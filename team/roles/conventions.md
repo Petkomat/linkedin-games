@@ -8,8 +8,11 @@ to merge, and the owner approves every merge. Read GLOSSARY.md for the words
 the team uses.
 
 You run headless: nobody answers questions while you work. If you can't go on,
-finish with the verdict that hands the task to the owner, and say exactly what
-you need.
+finish with the stuck verdict and say exactly what you need. The Project
+Manager reads it first and may wait for another task, brief you again, or
+close the task; only if that doesn't help does it reach the owner.
+`gh issue view`, `gh issue list`, `gh pr view` and `gh pr list` read tickets
+and PRs: look at the ones your task mentions.
 
 Your shell is Bash. Your role allows only some commands, and anything else is
 refused, never asked. A refusal isn't the end: do the same another way your

@@ -19,7 +19,7 @@ GitHub Actions, daily (daily.yml)        the owner's machine (python -m team run
 
 | Stage | Who | When it's done |
 |---|---|---|
-| triage | Project Manager (Sonnet) | develop · ops · split · declined (a knowledge game) · needs-human · done |
+| triage | Project Manager (Sonnet) | develop · ops · split · wait for #n · declined (a knowledge game) · needs-human · done |
 | develop | Developer ×2 (Opus) | builds test-first, plays once as a guest, pushes → review |
 | review | Reviewer ×2 (Opus) | its review goes on the PR: approve → ops · changes → develop; after the third, the owner decides |
 | ops | Operator ×1 (Sonnet) | rebase, tests, CI → ready |
@@ -43,6 +43,23 @@ GitHub Actions, daily (daily.yml)        the owner's machine (python -m team run
   replaces the skill's quiz and publishing, since nobody answers and only the
   orchestrator files issues. The parts are the task's sub-issues, done one at
   a time: each waits as `blocked` until the one before it is closed.
+- **Waiting for another task.** The Project Manager may answer "wait for
+  #n" (with the stage the task goes on in): the task gets that stage and the
+  `blocked` label, and isn't started. The orchestrator removes `blocked` by
+  itself once #n is closed, as it does for the parts of a split task, and the
+  task runs as usual. If #n isn't an open issue, or is the task itself, the
+  task goes to the owner as `needs-human`, with a comment saying why.
+- **A stuck Developer or Operator** doesn't go to the owner at once: the task
+  goes back to the Project Manager (stage triage), whose prompt has the stuck
+  comment and the open issues and PRs with their stage and labels. It answers
+  wait for #n, a new brief (develop or ops), done or declined (another task
+  covers it), or needs-human, only when the decision is the owner's. It gets
+  **one try per task**: the hidden marker of the hand-back stays in the bot's
+  comments, so a restart forgets nothing, and a task stuck again afterwards
+  goes to the owner, in the stage it was stuck in. A Reviewer has no stuck
+  verdict: the third review that doesn't approve goes to the owner.
+- **Every role may read tickets**: `gh issue view`, `gh issue list`,
+  `gh pr view` and `gh pr list`, and none of their write commands.
 - **What an agent finds** outside its task, such as a bug from history, goes
   in its verdict, at most two a run. The orchestrator files each as a new
   issue that waits for the owner. Agents never file issues themselves.
@@ -77,8 +94,10 @@ The team mentions you on GitHub, and the board lists the task under
   the orchestrator merges it within a minute. Request changes instead, and
   the task goes back to the Developer with your review.
 - **A question** (`needs-human`): the Project Manager can't tell if a game
-  is a logic game, a Developer or Operator is stuck, a run failed twice, the
-  third review didn't approve, or a merge failed. Answer in
+  is a logic game, or can't tell what a task needs or whether it may wait; a
+  Developer or Operator is stuck a second time (the first time, the Project
+  Manager tries to sort it out); a run failed twice, the third review didn't
+  approve, or a merge failed. Answer in
   a comment on the issue, then remove the `needs-human` label. The task goes
   on where it stopped, and the agent reads your comment. A Developer picks up
   its own earlier session. You can answer on the PR too.

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
-from .model import DECLINED, DEVELOP, NEEDS_HUMAN, OPS, REVIEW, SPLIT, TRIAGE
+from .model import DECLINED, DEVELOP, NEEDS_HUMAN, OPS, REVIEW, SPLIT, TRIAGE, WAIT
 
 
 def bash(*commands: str) -> tuple[str, ...]:
@@ -30,11 +30,13 @@ class Role:
     texts: tuple[str, ...] = field(default=())  # the verdict's other fields, all text
     required: tuple[str, ...] = field(default=())  # which of those it must give
     lists: tuple[tuple[str, dict[str, Any]], ...] = field(default=())  # fields that are lists: (name, item schema)
+    extras: tuple[tuple[str, dict[str, Any]], ...] = field(default=())  # other fields: (name, schema)
 
     @property
     def schema(self) -> dict[str, Any]:
         properties: dict[str, Any] = {self.key: {"type": "string", "enum": list(self.answers)}}
         properties.update({name: {"type": "string"} for name in self.texts})
+        properties.update(dict(self.extras))
         properties.update({name: {"type": "array", "items": item} for name, item in (*self.lists, ("found", FOUND))})
         return {"type": "object", "properties": properties, "required": [self.key, *self.required]}
 
@@ -52,14 +54,20 @@ FOUND = _item("title", "body", title=TEXT, body=TEXT)
 PART = _item("title", "body", "stage", title=TEXT, body=TEXT, stage={"type": "string", "enum": [DEVELOP, OPS]})
 
 
+# For the answer "wait": the issue to wait for, and the stage the task has once it's closed.
+WAIT_FIELDS = (("after", {"type": "integer"}), ("stage", {"type": "string", "enum": [DEVELOP, OPS]}))
+
 READ_GIT = bash("git status", "git diff", "git log", "git show")
-READ_SHELL = bash("ls", "cat", "head", "tail", "grep", "wc", "file", "sed -n", "pwd")  # every role may look
+READ_SHELL = bash(
+    "ls", "cat", "head", "tail", "grep", "wc", "file", "sed -n", "pwd",
+    "gh issue view", "gh issue list", "gh pr view", "gh pr list",
+)  # every role may look, tickets and PRs included
 
 PROJECT_MANAGER = Role(
     "project-manager", TRIAGE, "sonnet", 1, timedelta(minutes=20), worktree=False,
     allowed=(*bash("git log"), *READ_SHELL),
-    key="decision", answers=(DEVELOP, OPS, SPLIT, DECLINED, NEEDS_HUMAN, "done"),
-    texts=("comment",), required=("comment",), lists=(("parts", PART),),
+    key="decision", answers=(DEVELOP, OPS, SPLIT, WAIT, DECLINED, NEEDS_HUMAN, "done"),
+    texts=("comment",), required=("comment",), lists=(("parts", PART),), extras=WAIT_FIELDS,
 )
 DEVELOPER = Role(
     "developer", DEVELOP, "opus", 2, timedelta(hours=4), worktree=True,

@@ -66,6 +66,24 @@ def test_every_agent_may_read_with_the_shell_and_the_reviewer_may_run_the_tests(
     assert "Bash(uv run *)" in allowed(command(job("reviewer"), REVIEWER))
 
 
+def test_every_agent_may_read_tickets_and_prs_but_not_write_them():
+    for role in BY_NAME.values():
+        rules = set(allowed(command(job(role.name), role)))
+        for read in ("gh issue view", "gh issue list", "gh pr view", "gh pr list"):
+            assert {f"Bash({read})", f"Bash({read} *)"} <= rules
+        for write in ("create", "edit", "comment", "close", "merge", "reopen", "review"):
+            assert not any(rule.startswith((f"Bash(gh issue {write}", f"Bash(gh pr {write}")) for rule in rules)
+        assert "Bash(gh issue *)" not in rules and "Bash(gh pr *)" not in rules and "Bash(gh *)" not in rules
+
+
+def test_the_project_manager_may_ask_to_wait_for_an_issue():
+    schema = json.loads(option(command(job("project-manager"), PROJECT_MANAGER), "--json-schema"))
+
+    assert "wait" in schema["properties"]["decision"]["enum"]
+    assert schema["properties"]["after"]["type"] == "integer"
+    assert schema["properties"]["stage"]["enum"] == ["develop", "ops"]
+
+
 def test_reviewers_and_the_project_manager_cannot_edit():
     for role, name in ((REVIEWER, "reviewer"), (PROJECT_MANAGER, "project-manager")):
         rules = allowed(command(job(name), role)) if "--allowedTools" in command(job(name), role) else []
