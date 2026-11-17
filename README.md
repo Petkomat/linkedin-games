@@ -3,7 +3,10 @@
 **LinkedIn games: Think like a robot, move like a human**
 
 Solvers for the LinkedIn daily games: screenshot in, solved screenshot out,
-or play today's game in Chrome.
+or play today's game in Chrome. Covered so far: Patches, Queens, Mini Sudoku,
+Tango, Wend and Zip, the logic games, which rules and search solve from the
+screen alone. The knowledge games, such as Pinpoint and Crossclimb, need world
+knowledge and are out of scope.
 
 ```
 uv sync
