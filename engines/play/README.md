@@ -120,10 +120,10 @@ where LinkedIn puts its games; LinkedIn's messaging box in the bottom right
 corner doesn't count. A row in there shows something if its colours differ
 by more than 10 levels of 255, and the page is blank if fewer than 1 row in 10
 does. The empty page under queens2.png's bars has 1.5% such rows. The whole
-pages in `examples` have 59% to 94%, at full and half resolution, and so has
-queens2.png with its board painted over, the way a result screen may have no
-grid. A board is not read for this, because a result screen may have no grid
-to read.
+pages in `examples` have 59% to 94%, at full and half resolution. So has
+Zip's result screen for a guest (`examples/zip/zip-result1.png`, 85%), and
+queens2.png with its board painted over (94%). A board is not read for this,
+because a result screen has no grid to read.
 
 ## Live check
 

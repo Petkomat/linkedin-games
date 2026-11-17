@@ -53,6 +53,17 @@ def test_the_top_bar_over_an_empty_grey_page_is_blank(scale):
     assert looks_blank(scaled(blank_page(), scale))
 
 
+def test_an_empty_page_with_linkedins_messaging_box_is_still_blank():
+    # tango2.png, a signed-in page in a video frame, with only its bars, the
+    # messaging box in the bottom right corner and the video's black edges kept
+    page = Image.open(example("tango", "tango2.png")).convert("RGB")
+    blank = Image.new("RGB", page.size, (241, 240, 236))
+    for kept in [(0, 0, 1280, 93), (970, 630, 1280, 684), (0, 684, 1280, 720)]:
+        blank.paste(page.crop(kept), kept[:2])
+
+    assert looks_blank(blank)
+
+
 @pytest.mark.parametrize(
     ("game", "screenshot"),
     [("queens", "queens2.png"), ("tango", "tango2.png"), ("wend", "wend2.png"), ("zip", "zip2.jpg")],
@@ -60,6 +71,17 @@ def test_the_top_bar_over_an_empty_grey_page_is_blank(scale):
 @pytest.mark.parametrize("scale", [1.0, 0.5])
 def test_a_whole_page_with_a_board_is_not_blank(game, screenshot, scale):
     assert not looks_blank(scaled(Image.open(example(game, screenshot)), scale))
+
+
+@pytest.mark.parametrize("scale", [1.0, 0.5])
+def test_linkedins_result_screen_is_not_blank(scale):
+    # A guest's Zip result screen on 2026-11-17, confetti still falling; the
+    # profile photos of other members are painted over.
+    screen = scaled(Image.open(example("zip", "zip-result1.png")), scale)
+
+    with pytest.raises(ValueError):
+        GAMES["zip"].scan(screen)  # no grid on it
+    assert not looks_blank(screen)
 
 
 @pytest.mark.parametrize("scale", [1.0, 0.5])
