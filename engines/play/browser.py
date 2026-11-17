@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 import random
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import TYPE_CHECKING, Any
 
 from PIL import Image
@@ -67,12 +67,17 @@ class Player:
         self.perform(actions, seen.grid)
         return actions
 
-    def wait_for_board(self, game: Game, seconds: float) -> tuple[Any, list[Action]] | None:
+    def wait_for_board(
+        self, game: Game, seconds: float, before_each_look: Callable[[], object] | None = None
+    ) -> tuple[Any, list[Action]] | None:
         """`read`, once the same board has been read twice in a row (so a board
-        that is still fading in isn't used); None after `seconds`."""
+        that is still fading in isn't used); None after `seconds`. Calls
+        `before_each_look`, if given, before each read."""
         deadline = time.monotonic() + seconds
         previous = None
         while True:
+            if before_each_look is not None:
+                before_each_look()
             board = self.read(game)
             if board is not None and previous is not None and board[0].puzzle == previous[0].puzzle:
                 return board
