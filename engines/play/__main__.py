@@ -17,7 +17,6 @@ import os
 import shutil
 import subprocess
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -27,6 +26,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from .browser import Player
 from .games import GAMES, Game
 from .report import report
+from .result import looks_blank
 from .timing import Pauses, Tempo
 
 PROFILE = Path.home() / ".linkedin-games" / "chrome-profile"
@@ -34,7 +34,6 @@ PLAYS = Path("plays")  # final screenshots, one folder per game
 LOGIN_URL = "https://www.linkedin.com/login"
 LOGIN_PAGES = ("/login", "/authwall", "/checkpoint", "/uas/", "/signup")
 SESSION_COOKIE = "li_at"  # LinkedIn's login cookie
-RESULT_WAIT = 2.0  # s after the last move before the final screenshot
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -79,24 +78,33 @@ def main(argv: list[str] | None = None) -> int:
         page = browser.pages[0] if browser.pages else browser.new_page()
         _open(page, game)
         player = Player(page, tempo=Tempo(Pauses(args.pause, args.shortest_pause, args.pause_tail)))
-        board = player.wait_for_board(game, args.wait)
-        if board is None:
-            player.screenshot().save(output)
-            print(f"No solvable board on screen after {args.wait:.0f} s; see {output}")
-            leave_open(page, args.close_after)
-            browser.close()
-            return 1
-        seen, actions = board
-        solution = output.with_suffix(".md")
-        solution.write_text(report(game, seen.puzzle, started), encoding="utf-8")
-        print(f"Solved; the solution is in {solution}. Playing {len(actions)} moves...")
-        player.perform(actions, seen.grid)
-        time.sleep(RESULT_WAIT)  # let the game take the last move and show its result
-        player.screenshot().save(output)
-        print(f"Done; the screen is in {output}")
+        played = play(player, game, output, args.wait, started)
         leave_open(page, args.close_after)
         browser.close()
-    return 0
+    return 0 if played else 1
+
+
+def play(player: Player, game: Game, output: Path, board_wait: float, started: datetime) -> bool:
+    """Wait for the board on the player's page, solve it and play it. Saves the
+    solution next to `output` as .md as soon as it's solved, and the final
+    screen (see Player.final_screen) as `output`. False if no board read and
+    solved within `board_wait` s; `output` then shows what was there."""
+    board = player.wait_for_board(game, board_wait)
+    if board is None:
+        player.screenshot().save(output)
+        print(f"No solvable board on screen after {board_wait:.0f} s; see {output}")
+        return False
+    seen, actions = board
+    solution = output.with_suffix(".md")
+    solution.write_text(report(game, seen.puzzle, started), encoding="utf-8")
+    print(f"Solved; the solution is in {solution}. Playing {len(actions)} moves...")
+    player.perform(actions, seen.grid)
+    final = player.final_screen()
+    final.save(output)
+    if looks_blank(final):
+        print(f"The page still looked blank {player.result_wait.limit:.0f} s after the last move.")
+    print(f"Done; the screen is in {output}")
+    return True
 
 
 def screenshot_path(game: str, started: datetime) -> Path:

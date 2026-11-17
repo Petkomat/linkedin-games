@@ -15,6 +15,7 @@ from ..common.actions import Action, Click, Drag
 from ..vision import GridGeometry
 from .games import Game
 from .motion import Hand, drag, spot
+from .result import ResultWait, looks_blank
 from .screen import Screen
 from .timing import Tempo
 
@@ -31,7 +32,8 @@ class Player:
     It waits before each move as `tempo` says: a thinking pause at the start
     of each thought, then a quick burst. The mouse is pressed and released on
     random spots of their cells, never exactly on the middle, and drags move
-    like `hand` (see `motion`). Random draws come from `rng`.
+    like `hand` (see `motion`). Random draws come from `rng`. After the last
+    move, it waits for the game's result as `result_wait` says.
     """
 
     def __init__(
@@ -40,11 +42,13 @@ class Player:
         tempo: Tempo | None = None,
         rng: random.Random | None = None,
         hand: Hand | None = None,
+        result_wait: ResultWait | None = None,
     ) -> None:
         self.page = page
         self.tempo = tempo or Tempo()
         self.rng = rng or random.Random()
         self.hand = hand or Hand()
+        self.result_wait = result_wait or ResultWait()
 
     def screenshot(self) -> Image.Image:
         """What is on screen now, in device pixels."""
@@ -76,6 +80,26 @@ class Player:
                 return None
             previous = board
             time.sleep(RETRY)
+
+    def final_screen(self) -> Image.Image:
+        """The screen to save after the last move: the finished board or the
+        game's result screen. On its way from one to the other, LinkedIn may
+        show an empty page for a while, so a blank screen is waited out, as
+        `result_wait` says. At its limit, the last screenshot taken."""
+        wait = self.result_wait
+        deadline = time.monotonic() + wait.limit
+        time.sleep(min(wait.first_look, wait.limit))
+        shown = self.screenshot()
+        if not looks_blank(shown):
+            return shown
+        while (left := deadline - time.monotonic()) > 0:
+            time.sleep(min(wait.poll, left))
+            shown = self.screenshot()
+            if not looks_blank(shown):  # it has just shown up, and may still be fading in
+                time.sleep(min(wait.settle, max(0.0, deadline - time.monotonic())))
+                settled = self.screenshot()
+                return shown if looks_blank(settled) else settled
+        return shown
 
     def read(self, game: Game) -> tuple[Any, list[Action]] | None:
         """The board on screen and the moves that solve it; None if there is no
