@@ -28,6 +28,7 @@ from .model import (
     SPLIT,
     STAGE,
     TRIAGE,
+    WAIT,
     Comment,
     Failed,
     Issue,
@@ -131,6 +132,8 @@ class Orchestrator:
                 self._guarded(issue.number, self._await_owner, issue)
             elif issue.stage == SPLIT and NEEDS_HUMAN not in issue.labels:
                 self._guarded(issue.number, self._follow_parts, issue)
+            if BLOCKED in issue.labels and NEEDS_HUMAN not in issue.labels:
+                self._guarded(issue.number, self._release, issue)
         if self.paused_until and now < self.paused_until:
             return
         for issue in sorted(self._tasks(), key=_priority):
@@ -194,8 +197,23 @@ class Orchestrator:
             done = sum(1 for e in self._events(issue.number) if e.get("role") == "reviewer")
             parts.append(f"This is review {done + 1} of {MAX_REVIEWS}.")
         if role.stage == TRIAGE:
-            others = [f"- #{t.number} {t.title} ({', '.join(sorted(t.labels))})" for t in self._tasks() if t.number != issue.number]
-            parts.append("## The other open tasks" + PARAGRAPH + ("\n".join(others) or "(none)"))
+            stuck = self._stuck_event(issue)
+            if stuck:
+                who = str(stuck.get("by", "agent")).replace("-", " ").title()
+                parts.append(
+                    "## This task is stuck" + PARAGRAPH
+                    + f"The {who} ended stuck. You get one try at sorting it out before it goes to the owner:" + PARAGRAPH
+                    + str(stuck.get("stuck", ""))
+                )  # fmt: skip
+            others = []
+            for t in self._tasks():
+                if t.number == issue.number:
+                    continue
+                line = f"- #{t.number} {t.title} (stage: {t.stage or 'none'}; labels: {', '.join(sorted(t.labels)) or 'none'})"
+                pr = self.github.pull_request(self._branch(t)) if stuck else None
+                others.append(line + (f", PR #{pr.number}" if pr else ""))
+            what = "issues and PRs" if stuck else "tasks"
+            parts.append(f"## The other open {what}" + PARAGRAPH + ("\n".join(others) or "(none)"))
         parts.append("## The issue" + PARAGRAPH + (issue.body.strip() or "(no description)"))
         said = [c for c in self.github.comments_on(issue.number) if c.author in self.trusted]
         if said:
@@ -262,6 +280,22 @@ class Orchestrator:
             self.github.create_issue(title, body, {NEEDS_HUMAN})
             known.add(title.lower())
 
+    def _stuck_event(self, issue: Issue) -> dict[str, Any] | None:
+        """The stuck report the Project Manager is sorting out, if it is the
+        task's latest step."""
+        staged = [e for e in self._events(issue.number) if "stage" in e]
+        return staged[-1] if staged and staged[-1].get("rerouted") else None
+
+    def _stuck(self, issue: Issue, who: str, summary: str, event: dict[str, Any]) -> None:
+        """A stuck agent: the Project Manager gets one try at the task before
+        the owner does. The marker of that try stays on the task for good."""
+        text = f"The {who} is stuck: {summary}"
+        if any(e.get("rerouted") for e in self._events(issue.number)):
+            self._ask_owner(issue, text, event)
+            return
+        note = text + PARAGRAPH + "Sent to the Project Manager, who gets one try at sorting it out before the owner is asked."
+        self._move(issue, TRIAGE, note, {**event, "rerouted": True, "by": event["role"], "stuck": summary[:1500]})
+
     def _failed(self, run: Running, issue: Issue, reason: str) -> None:
         """A run that crashed or timed out is tried once more; after the second
         failure in a row the owner decides."""
@@ -286,6 +320,8 @@ class Orchestrator:
             self._move(issue, decision, note, {**event, "branch": self._branch(issue)})
         elif decision == SPLIT:
             self._split(issue, note, verdict.get("parts"), event)
+        elif decision == WAIT:
+            self._wait(issue, note, verdict, event)
         elif decision == DECLINED:
             self._record(issue.number, note, event)
             self._set_stage(issue, None)
@@ -297,6 +333,32 @@ class Orchestrator:
             self._record(issue.number, note, {**event, "stage": "done"})
             self._set_stage(issue, None)
             self.github.close(issue.number)
+
+    def _wait(self, issue: Issue, note: str, verdict: dict[str, Any], event: dict[str, Any]) -> None:
+        """The task keeps the stage the Project Manager chose, but is blocked
+        until another issue is closed; `_release` lets it go."""
+        after, stage = verdict.get("after"), verdict.get("stage") or DEVELOP
+        if stage not in (DEVELOP, OPS):
+            self._ask_owner(issue, f"The Project Manager wants this to wait, but gave the stage {stage!r}. {note}", event)
+        elif not isinstance(after, int) or isinstance(after, bool) or after == issue.number:
+            why = "the task itself" if after == issue.number else f"{after!r}, which isn't an issue number"
+            self._ask_owner(issue, f"The Project Manager wants this to wait for {why}. {note}", event)
+        elif self._task(after) is None:
+            self._ask_owner(issue, f"The Project Manager wants this to wait for #{after}, which isn't an open issue. {note}", event)
+        else:
+            text = PARAGRAPH.join(t for t in (note, f"Waits for #{after} to be closed, then goes on as {stage}.") if t)
+            self._record(issue.number, text, {**event, "stage": stage, "after": after})
+            self.github.add_labels(issue.number, {BLOCKED})  # before the stage, so it never starts unblocked
+            self._set_stage(issue, stage)
+
+    def _release(self, task: Issue) -> None:
+        """Let a task go once the issue it waits for is closed. A part has no
+        such issue: it waits for the part before it, and `_follow_parts`
+        releases it."""
+        waits = [e["after"] for e in self._events(task.number) if "after" in e]
+        if waits and waits[-1] not in {t.number for t in self.github.open_issues()}:
+            self.github.remove_labels(task.number, {BLOCKED})
+            self._record(task.number, f"#{waits[-1]} is closed. Going on.", {"released": waits[-1]})
 
     def _split(self, issue: Issue, note: str, parts: Any, event: dict[str, Any]) -> None:
         """A task too large for one PR becomes its parts, in order: the plan is
@@ -342,7 +404,7 @@ class Orchestrator:
         summary = verdict.get("summary", "")
         event = {"role": "developer", "status": verdict.get("status"), "session": run.job.session}
         if verdict.get("status") != "ready":
-            self._ask_owner(issue, f"The Developer is stuck: {summary}", event)
+            self._stuck(issue, "Developer", summary, event)
             return
         branch = run.job.branch or self._branch(issue)
         pr = self.github.pull_request(branch)
@@ -373,7 +435,7 @@ class Orchestrator:
         if status == "developer":
             self._move(issue, DEVELOP, f"The Operator sends this back to the Developer: {summary}", event)
         elif status != "ready":
-            self._ask_owner(issue, f"The Operator is stuck: {summary}", event)
+            self._stuck(issue, "Operator", summary, event)
         else:
             branch = run.job.branch or self._branch(issue)
             pr = self.github.pull_request(branch) or self.github.open_pull_request(

@@ -130,13 +130,128 @@ def test_a_finished_developer_opens_a_pr_for_review(github, agents, team):
     assert agents.last_job("reviewer", number).branch == branch
 
 
-def test_a_stuck_developer_asks_the_owner(github, agents, team):
-    number = triaged(github, agents, team, "develop")
-    agents.finish("developer", number, Verdict({"status": "stuck", "summary": "Needs scipy for a convolution; may I add it?"}))
+def stuck(github, agents, team, role: str = "developer", summary: str = "Needs scipy for a convolution; may I add it?", **issue) -> int:
+    """A task whose Developer (or Operator) ends stuck; the Project Manager has it next."""
+    number = triaged(github, agents, team, "ops" if role == "operator" else "develop", **issue)
+    agents.finish(role, number, Verdict({"status": "stuck", "summary": summary}))
+    team.tick(T0)
+    return number
+
+
+def test_a_stuck_developer_goes_to_the_project_manager_first(github, agents, team):
+    number = stuck(github, agents, team)
+
+    assert github.stage(number) == "triage"
+    assert "needs-human" not in github.labels(number)
+    assert agents.running() == [("project-manager", number)]
+
+
+def test_the_project_manager_is_told_what_is_stuck_and_sees_the_open_issues_and_prs(github, agents, team):
+    other = github.open_issue("Zip fails today", labels=("stage:review", "kind:incident"))
+    github.open_pull_request(f"team/{other}-zip-fails-today", "Zip", "")
+    number = stuck(github, agents, team)
+
+    prompt = agents.last_job("project-manager", number).prompt
+    assert "This task is stuck" in prompt and "Needs scipy for a convolution" in prompt
+    assert f"- #{other} Zip fails today (stage: review; labels: kind:incident, stage:review), PR #100" in prompt
+
+
+def test_a_stuck_ticket_goes_back_to_work_with_a_new_brief(github, agents, team):
+    number = stuck(github, agents, team)
+    agents.finish("project-manager", number, Verdict({"decision": "develop", "comment": "Use numpy only: no scipy."}))
+    team.tick(T0)
+
+    assert github.stage(number) == "develop"
+    assert agents.running() == [("developer", number)]
+    assert "Use numpy only: no scipy." in agents.last_job("developer", number).prompt
+
+
+def test_a_stuck_operator_goes_back_to_the_operator_with_a_new_brief(github, agents, team):
+    number = stuck(github, agents, team, "operator", "CI needs a secret.")
+    agents.finish("project-manager", number, Verdict({"decision": "ops", "comment": "Use the built-in token."}))
+    team.tick(T0)
+
+    assert agents.running() == [("operator", number)]
+
+
+def test_a_ticket_stuck_a_second_time_goes_to_the_owner(github, agents, team):
+    number = stuck(github, agents, team)
+    agents.finish("project-manager", number, Verdict({"decision": "develop", "comment": "Use numpy only."}))
+    team.tick(T0)
+    agents.finish("developer", number, Verdict({"status": "stuck", "summary": "Still can't."}))
+    team.tick(T0)
+
+    assert github.stage(number) == "develop"
+    assert "needs-human" in github.labels(number)
+    assert "Still can't." in github.comments_on(number)[-1].body
+    assert "@owner" in github.comments_on(number)[-1].body
+    assert agents.running() == []
+
+
+@pytest.mark.parametrize("decision, closed", [("done", "completed"), ("declined", "not planned")])
+def test_a_stuck_ticket_another_task_covers_is_closed(github, agents, team, decision, closed):
+    number = stuck(github, agents, team)
+    agents.finish("project-manager", number, Verdict({"decision": decision, "comment": "#1 covers it."}))
+    team.tick(T0)
+
+    assert github.closed[number] == closed
+    assert agents.running() == []
+
+
+def test_the_project_manager_may_hand_a_stuck_ticket_to_the_owner(github, agents, team):
+    number = stuck(github, agents, team)
+    agents.finish("project-manager", number, Verdict({"decision": "needs-human", "comment": "May we add scipy?"}))
     team.tick(T0)
 
     assert "needs-human" in github.labels(number)
-    assert "Needs scipy" in github.comments_on(number)[-1].body
+    assert "May we add scipy?" in github.comments_on(number)[-1].body
+
+
+def test_a_stuck_ticket_may_wait_for_another_and_goes_on_when_it_is_closed(github, agents, team):
+    other = github.open_issue("Teach the solver to trace", labels=("stage:develop",))
+    number = stuck(github, agents, team)
+    agents.finish("project-manager", number, Verdict({"decision": "wait", "comment": "Needs #1 first.", "after": other, "stage": "develop"}))
+    team.tick(T0)
+
+    assert github.stage(number) == "develop" and "blocked" in github.labels(number)
+    assert ("developer", number) not in agents.running()
+
+    github.close(other)
+    team.tick(T0)
+
+    assert "blocked" not in github.labels(number)
+    assert ("developer", number) in agents.running()
+
+
+def test_a_task_may_be_parked_at_triage_until_another_is_closed_and_then_started(github, agents, team):
+    first = github.open_issue("Teach the solver to trace", labels=("stage:develop",))
+    number = github.open_issue("Use the trace in Zip")
+    team.tick(T0)
+    agents.finish("project-manager", number, Verdict({"decision": "wait", "comment": "After #1.", "after": first, "stage": "ops"}))
+    team.tick(T0)
+
+    assert github.stage(number) == "ops" and "blocked" in github.labels(number)
+    team.tick(T0)
+    assert ("operator", number) not in agents.running()
+
+    github.close(first)
+    team.tick(T0)
+
+    assert "blocked" not in github.labels(number)
+    assert ("operator", number) in agents.running()
+
+
+@pytest.mark.parametrize("after", [99, "self", None, "seven"])
+def test_waiting_for_an_issue_that_does_not_exist_or_for_itself_goes_to_the_owner(github, agents, team, after):
+    number = github.open_issue("Use the trace in Zip")
+    team.tick(T0)
+    after = number if after == "self" else after
+    agents.finish("project-manager", number, Verdict({"decision": "wait", "comment": "Wait.", "after": after, "stage": "develop"}))
+    team.tick(T0)
+
+    assert "needs-human" in github.labels(number)
+    assert "blocked" not in github.labels(number)
+    assert "@owner" in github.comments_on(number)[-1].body and "wait" in github.comments_on(number)[-1].body.lower()
     assert agents.running() == []
 
 
@@ -266,8 +381,13 @@ def test_the_operator_can_send_a_logic_conflict_back_without_using_a_review(gith
     assert reviewed_count
 
 
-def test_a_stuck_operator_asks_the_owner(github, agents, team):
+def test_an_operator_stuck_after_the_project_manager_s_try_asks_the_owner(github, agents, team):
     number = approved(github, agents, team)
+    agents.finish("operator", number, Verdict({"status": "stuck", "summary": "CI needs a secret."}))
+    team.tick(T0)
+    assert github.stage(number) == "triage"  # the Project Manager's one try
+    agents.finish("project-manager", number, Verdict({"decision": "ops", "comment": "Try again."}))
+    team.tick(T0)
     agents.finish("operator", number, Verdict({"status": "stuck", "summary": "CI needs a secret."}))
     team.tick(T0)
 
@@ -363,6 +483,10 @@ def test_only_trusted_people_s_comments_reach_an_agent(github, agents, team):
 
 def test_the_owner_lets_a_task_go_on_by_removing_needs_human(github, agents, team):
     number = triaged(github, agents, team, "develop")
+    agents.finish("developer", number, Verdict({"status": "stuck", "summary": "May I add scipy?"}))
+    team.tick(T0)
+    agents.finish("project-manager", number, Verdict({"decision": "develop", "comment": "Try."}))
+    team.tick(T0)
     agents.finish("developer", number, Verdict({"status": "stuck", "summary": "May I add scipy?"}))
     team.tick(T0)
     assert "remove the `needs-human` label" in github.comments_on(number)[-1].body, "the owner is told how"
