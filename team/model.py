@@ -25,6 +25,7 @@ class Issue:
     labels: frozenset[str]
     created: datetime
     updated: datetime
+    assignees: frozenset[str] = frozenset()
 
     @property
     def stage(self) -> str | None:

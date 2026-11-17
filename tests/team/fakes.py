@@ -47,6 +47,10 @@ class FakeGitHub:
     def close(self, number: int, not_planned: bool = False) -> None:
         self.closed[number] = "not planned" if not_planned else "completed"
 
+    def assign(self, number: int, login: str) -> None:
+        issue = self.issues[number]
+        self.issues[number] = replace(issue, assignees=issue.assignees | {login}, updated=self.now)
+
     def pull_request(self, branch: str) -> PullRequest | None:
         return self.prs.get(branch)
 
@@ -81,11 +85,17 @@ class FakeGitHub:
 
     # Helpers for the tests.
 
-    def open_issue(self, title: str, author: str | None = None, labels: tuple[str, ...] = (), body: str = "", age: timedelta = timedelta()) -> int:
+    def open_issue(
+        self, title: str, author: str | None = None, labels: tuple[str, ...] = (), body: str = "", age: timedelta = timedelta(),
+        assignees: tuple[str, ...] = (),
+    ) -> int:  # fmt: skip
         number = len(self.issues) + 1
         when = self.now - age
-        self.issues[number] = Issue(number, title, body, author or self.owner, frozenset(labels), when, when)
+        self.issues[number] = Issue(number, title, body, author or self.owner, frozenset(labels), when, when, frozenset(assignees))
         return number
+
+    def assignees(self, number: int) -> set[str]:
+        return set(self.issues[number].assignees)
 
     def add_comment(self, number: int, author: str, body: str) -> None:
         self.comments.setdefault(number, []).append(Comment(author, body, self.now))

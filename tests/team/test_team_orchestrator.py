@@ -80,6 +80,22 @@ def test_a_knowledge_game_is_declined_and_remembered(github, agents, team):
     assert agents.running() == []
 
 
+def test_the_team_s_account_is_assigned_to_the_tasks_it_works_on_and_stays_when_done(github, agents, team):
+    # The assignee is who did the work, as on any team; "your turn" is a review request or a mention.
+    number = triaged(github, agents, team, "declined", "Pinpoint needs world knowledge.", title="New game: Pinpoint")
+
+    assert github.closed[number] == "not planned"
+    assert github.assignees(number) == {"team-bot"}
+
+
+def test_a_task_someone_already_has_stays_theirs(github, agents, team):
+    number = github.open_issue("I'll fix Tango myself", assignees=("owner",))
+
+    team.tick(T0)
+
+    assert github.assignees(number) == {"owner"}
+
+
 def test_an_unclear_task_waits_for_the_owner(github, agents, team):
     number = triaged(github, agents, team, "needs-human", "Is Sumbreak a logic game? The rules mention trivia.")
 

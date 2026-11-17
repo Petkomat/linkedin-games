@@ -30,25 +30,27 @@ def local(text: str) -> datetime:
     return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone().replace(tzinfo=None)
 
 
-def issue(number: int, login: str, labels: list[str]) -> dict[str, object]:
+def issue(number: int, login: str, labels: list[str], assignees: tuple[str, ...] = ()) -> dict[str, object]:
     return {
         "number": number,
         "title": f"Task {number}",
         "body": "Details.",
         "author": {"login": login, "is_bot": login.startswith("app/")},
         "labels": [{"name": name, "color": "ededed"} for name in labels],
+        "assignees": [{"login": name, "name": ""} for name in assignees],
         "createdAt": "2026-11-17T08:00:00Z",
         "updatedAt": "2026-11-17T09:30:00Z",
     }
 
 
-def test_open_issues_come_with_their_author_labels_and_times():
-    gh = Gh({"issue list": [issue(7, "app/github-actions", ["kind:new-game", "stage:triage"])]})
+def test_open_issues_come_with_their_author_labels_assignees_and_times():
+    gh = Gh({"issue list": [issue(7, "app/github-actions", ["kind:new-game", "stage:triage"], assignees=("team-bot",))]})
 
     [task] = GhGitHub(REPO, gh).open_issues()
 
     assert (task.number, task.author, task.stage) == (7, "app/github-actions", "triage")
     assert task.labels == {"kind:new-game", "stage:triage"}
+    assert task.assignees == {"team-bot"}
     assert task.created == local("2026-11-17T08:00:00Z")
     assert task.updated == local("2026-11-17T09:30:00Z")
     assert gh.calls[0][0][-2:] == ["--repo", REPO]
@@ -95,20 +97,22 @@ def test_writing_sends_these_gh_commands():
     github.add_labels(7, {"stage:develop"})
     github.remove_labels(7, {"stage:triage"})
     github.close(7, not_planned=True)
+    github.assign(7, "team-bot")
     github.review(12, "Review 1 of 3")
     github.request_review(12, "owner")
     github.merge(12)
 
     sent = [(" ".join(args[: args.index("--repo")]), stdin) for args, stdin in gh.calls if args[0] != "pr" or args[1] != "list"]
-    assert sent[:6] == [
+    assert sent[:7] == [
         ("issue comment 7 --body-file -", "Hello"),
         ("issue edit 7 --add-label stage:develop", None),
         ("issue edit 7 --remove-label stage:triage", None),
         ("issue close 7 --reason not planned", None),
+        ("issue edit 7 --add-assignee team-bot", None),
         ("pr review 12 --comment --body-file -", "Review 1 of 3"),
         ("pr edit 12 --add-reviewer owner", None),
     ]
-    assert sent[6][0] == "pr merge 12 --squash --delete-branch"
+    assert sent[7][0] == "pr merge 12 --squash --delete-branch"
 
 
 def test_opening_a_pr_returns_it():

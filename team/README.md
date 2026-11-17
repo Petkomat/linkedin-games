@@ -26,6 +26,8 @@ GitHub Actions, daily (daily.yml)        the owner's machine (python -m team run
 | ready | the owner | approves the PR: the orchestrator merges it and closes the task |
 
 - **GitHub is the only state.** A task is an issue, and its stage is a label.
+  The team's account is the assignee of every task it works on, and stays so
+  once the task is done, unless someone was assigned already.
   What routing must remember (failed runs, reviews, branches, Claude sessions)
   is in the bot's comments, as a hidden marker under the readable text.
 - **Routing is fixed code** ([orchestrator.py](orchestrator.py)). Agents use

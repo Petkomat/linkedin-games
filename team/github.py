@@ -49,7 +49,7 @@ class GhGitHub:
     # Issues.
 
     def open_issues(self) -> list[Issue]:
-        fields = "number,title,body,author,labels,createdAt,updatedAt"
+        fields = "number,title,body,author,labels,assignees,createdAt,updatedAt"
         return [
             Issue(
                 i["number"],
@@ -59,6 +59,7 @@ class GhGitHub:
                 frozenset(label["name"] for label in i["labels"]),
                 _time(i["createdAt"]),
                 _time(i["updatedAt"]),
+                frozenset(person["login"] for person in i.get("assignees") or ()),
             )
             for i in self._json("issue", "list", "--state", "open", "--limit", "200", "--json", fields)
         ]
@@ -78,6 +79,9 @@ class GhGitHub:
 
     def close(self, number: int, not_planned: bool = False) -> None:
         self._gh("issue", "close", str(number), "--reason", "not planned" if not_planned else "completed")
+
+    def assign(self, number: int, login: str) -> None:
+        self._gh("issue", "edit", str(number), "--add-assignee", login)
 
     def create_issue(self, title: str, body: str, labels: set[str]) -> int:
         url = self._gh("issue", "create", "--title", title, "--body-file", "-", "--label", ",".join(sorted(labels)), stdin=body)
