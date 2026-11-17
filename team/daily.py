@@ -3,7 +3,8 @@
 The daily guest run, in GitHub Actions: the Scout looks for new games and the
 Watcher checks every built game, then both file their issues. One fresh
 headless Chrome, never logged in; each page is opened once, nothing is
-retried, and a blocked hub stops the run.
+retried, and a blocked hub stops the run. What the Scout saw stays with the
+run: the hub's games in the log, scout/hub.png and hub.html in the artifact.
 
 Needs GH_TOKEN (the workflow's token) and GITHUB_REPOSITORY; GITHUB_RUN_ID
 and GITHUB_SERVER_URL make the issues link to the run.
@@ -28,7 +29,7 @@ from engines.play.check import START_WAIT, VIEWPORT, check_all, click_start_scre
 from engines.play.games import GAMES
 
 from .github import GhGitHub, gh
-from .scout import HUB, HubGame, scout
+from .scout import HUB, HubGame, hub_games, scout
 from .watcher import incident, watch
 
 SETTLE = 5.0  # s for a new game's board to show after its start screens
@@ -88,6 +89,18 @@ def _rules(page: Page, seconds: float = RULES_WAIT) -> str:
     return ""
 
 
+def keep_hub(page: Page, html: str, folder: Path) -> None:
+    """What the Scout saw, so that "no new game" can be checked: the hub's
+    games in the log, and the page itself in the run's artifact."""
+    print("Hub: " + (", ".join(game.slug for game in hub_games(html)) or "no games"), flush=True)
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "hub.html").write_text(html, encoding="utf-8")
+    try:
+        page.screenshot(path=str(folder / "hub.png"), full_page=True)
+    except PlaywrightError as error:  # the picture is a nicety; the run goes on
+        print(f"No screenshot of the hub: {error}", flush=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m team.daily", description=__doc__.splitlines()[2])
     parser.add_argument("--out", type=Path, default=Path("daily"))
@@ -104,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
             response = page.goto(HUB)
             status = response.status if response else 0
             html = page.content()
+            keep_hub(page, html, args.out / "scout")
             page.close()
             if status in (429, 999) or status >= 500:
                 incident(github, "blocked", "LinkedIn blocked today's guest check",
