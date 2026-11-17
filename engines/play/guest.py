@@ -8,9 +8,9 @@ touched.
 shot  saves what a game's page shows after its start screens, for any game,
       including one that isn't built yet (a slug like "sumbreak", or a URL).
 play  reads, solves and plays a built game with the usual human-like player,
-      and saves DIR/<game>.png (the final board), <game>.md (the solution)
-      and <game>.webm (a video of the play). Exits with 1 if it couldn't read
-      or solve the board.
+      and saves DIR/<game>.png (the finished board or the result screen),
+      <game>.md (the solution) and <game>.webm (a video of the play). Exits
+      with 1 if it couldn't read or solve the board.
 """
 
 from __future__ import annotations
@@ -34,7 +34,6 @@ from .report import report
 
 GAMES_URL = "https://www.linkedin.com/games/{}/"
 SETTLE = 5.0  # s for the board to show after the start screens, before a shot
-RESULT_WAIT = 2.0  # s after the last move before the final screenshot
 
 
 def game_url(slug_or_url: str) -> str:
@@ -77,8 +76,9 @@ def play(
     board_wait: float = BOARD_WAIT,
 ) -> bool:
     """Start `game` on `page`, read and solve it, and play it like a person.
-    Saves out/<game>.md as soon as it's solved and out/<game>.png at the end.
-    False if no board read and solved; the png then shows what was there."""
+    Saves out/<game>.md as soon as it's solved and out/<game>.png at the end,
+    the player's final screen (see Player.final_screen). False if no board
+    read and solved; the png then shows what was there."""
     player = player or Player(page)
     board = start_and_read(page, player, game, start_wait, board_wait)
     out.mkdir(parents=True, exist_ok=True)
@@ -88,8 +88,7 @@ def play(
     seen, actions = board
     (out / f"{game.name}.md").write_text(report(game, seen.puzzle, datetime.now()), encoding="utf-8")
     player.perform(actions, seen.grid)
-    time.sleep(RESULT_WAIT)  # let the game take the last move and show its result
-    player.screenshot().save(out / f"{game.name}.png")
+    player.final_screen().save(out / f"{game.name}.png")
     return True
 
 

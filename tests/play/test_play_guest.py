@@ -15,10 +15,11 @@ from PIL import Image
 
 from engines.play.games import GAMES
 from engines.play.motion import INSTANT
+from engines.play.result import ResultWait
 from engines.play.timing import INSTANT as NO_WAITING
 from tests.helpers import example
 
-from .pages import SCALE, page_file, page_showing
+from .pages import SCALE, page_file, page_showing, showing
 from .test_play_in_browser import gestures, one_by_one, same_gestures
 
 pytest.importorskip("playwright.sync_api", reason="needs: uv sync --extra browser")
@@ -61,9 +62,10 @@ def test_a_guest_play_enters_the_moves_and_keeps_a_video_the_final_board_and_the
     queens = GAMES["queens"]
     original = queens.scan(example("queens", "queens1.png"))
     url = page_file(tmp_path, example("queens", "queens1.png"), scale=SCALE, behind_start_screen=True)
+    _, viewport = showing(example("queens", "queens1.png"))  # the board fills the window, as on LinkedIn
     out = tmp_path / "out"
 
-    with recorded_page(browser, out / "queens.webm", device_scale_factor=SCALE) as page:
+    with recorded_page(browser, out / "queens.webm", device_scale_factor=SCALE, viewport=viewport) as page:
         page.goto(url)
         played = play(page, queens, out, Player(page, tempo=NO_WAITING, hand=INSTANT), start_wait=5, board_wait=8)
         recorded = gestures(page.evaluate("events"), original.grid)
@@ -74,6 +76,47 @@ def test_a_guest_play_enters_the_moves_and_keeps_a_video_the_final_board_and_the
     assert "Q" in (out / "queens.md").read_text(encoding="utf-8")
     assert Image.open(out / "queens.png").size[0] > 0
     assert (out / "queens.webm").stat().st_size > 0
+
+
+def play_queens1(browser, out, result_wait: ResultWait, **ending) -> bool:
+    """A guest play of queens1.png behind a start screen, on a page that ends
+    as `ending` says (see pages.page_showing). The board fills the window, as
+    LinkedIn's board fills the middle of its page."""
+    queens = GAMES["queens"]
+    _, viewport = showing(example("queens", "queens1.png"))
+    url = page_file(out.parent, example("queens", "queens1.png"), scale=SCALE, behind_start_screen=True, **ending)
+    with recorded_page(browser, out / "queens.webm", device_scale_factor=SCALE, viewport=viewport) as page:
+        page.goto(url)
+        player = Player(page, tempo=NO_WAITING, hand=INSTANT, result_wait=result_wait)
+        return play(page, queens, out, player, start_wait=5, board_wait=8)
+
+
+def presses_to_solve_queens1() -> int:
+    queens = GAMES["queens"]
+    return len(one_by_one(queens.moves(queens.scan(example("queens", "queens1.png")).puzzle)))
+
+
+def test_a_guest_play_waits_out_a_blank_page_after_the_last_move_and_saves_what_shows_next(browser, tmp_path):
+    # Zip and Wend went blank for more than 2 s on their way to the result screen.
+    out = tmp_path / "out"
+    wait = ResultWait(first_look=0.5, limit=10, poll=0.2, settle=0.2)
+
+    played = play_queens1(browser, out, wait, blank_after_moves=presses_to_solve_queens1(), back_after_ms=2500)
+
+    assert played
+    queens = GAMES["queens"]
+    saved = queens.scan(Image.open(out / "queens.png"))
+    assert saved.puzzle == queens.scan(example("queens", "queens1.png")).puzzle
+
+
+def test_a_guest_play_whose_page_stays_blank_still_counts_and_keeps_the_last_screenshot(browser, tmp_path):
+    out = tmp_path / "out"
+    wait = ResultWait(first_look=0.2, limit=1, poll=0.2, settle=0)
+
+    played = play_queens1(browser, out, wait, blank_after_moves=presses_to_solve_queens1())
+
+    assert played
+    assert (out / "queens.png").exists()
 
 
 def test_a_guest_play_without_a_board_plays_nothing_and_keeps_what_it_saw(browser, tmp_path):

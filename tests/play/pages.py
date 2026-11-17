@@ -36,14 +36,23 @@ def page_showing(
     behind_intro: bool = False,
     screens_after_ms: int = 0,
     in_iframe: bool = False,
+    blank_after_moves: int | None = None,
+    back_after_ms: int | None = None,
 ):
     """A page that shows `screenshot` pixel for pixel and records input events.
 
     With `behind_start_screen`, the screenshot only shows after a click on
     "Start game"; with `behind_intro` too, that only shows after "Solve now".
     `screens_after_ms` delays the start screens, like a slow page, and
-    `in_iframe` puts everything in an iframe, as LinkedIn does with Mini Sudoku."""
-    body, viewport = showing(screenshot, SCALE, behind_start_screen, behind_intro, screens_after_ms, in_iframe)
+    `in_iframe` puts everything in an iframe, as LinkedIn does with Mini Sudoku.
+
+    Like LinkedIn on its way to a result screen, the page goes blank once the
+    screenshot has been pressed `blank_after_moves` times (once per click; a
+    drag is one press), and shows the screenshot again `back_after_ms` later
+    (never, if None)."""
+    body, viewport = showing(
+        screenshot, SCALE, behind_start_screen, behind_intro, screens_after_ms, in_iframe, blank_after_moves, back_after_ms
+    )
     page = browser.new_page(device_scale_factor=SCALE, viewport=viewport)
     page.set_content(body)
     return page
@@ -66,6 +75,8 @@ def showing(
     behind_intro: bool = False,
     screens_after_ms: int = 0,
     in_iframe: bool = False,
+    blank_after_moves: int | None = None,
+    back_after_ms: int | None = None,
 ) -> tuple[str, dict]:
     """The HTML of a page showing `screenshot` pixel for pixel at `scale`, and
     the viewport it fills."""
@@ -78,7 +89,8 @@ def showing(
         # browser's own drag-and-drop, which swallows the pointer events.
         f"<body style='margin:0'><img draggable='false' src='data:image/{mime};base64,{data}' "
         f"style='display:block;{hidden}width:{width / scale}px;height:{height / scale}px'>"
-        f"{_later(_start_screens(behind_start_screen, behind_intro), screens_after_ms)}{RECORDER}</body>"
+        f"{_later(_start_screens(behind_start_screen, behind_intro), screens_after_ms)}{RECORDER}"
+        f"{_blank_at_the_end(blank_after_moves, back_after_ms)}</body>"
     )
     if in_iframe:
         body = (
@@ -92,6 +104,21 @@ def _start_screens(behind_start_screen: bool, behind_intro: bool) -> str:
     if behind_intro:
         return START_SCREEN.replace("<span id='start' style='", "<span id='start' style='display:none;") + INTRO_SCREEN
     return START_SCREEN if behind_start_screen else ""
+
+
+def _blank_at_the_end(moves: int | None, back_after_ms: int | None) -> str:
+    """A script that hides the screenshot after `moves` presses on it, and
+    shows it again `back_after_ms` later (never, if None)."""
+    if moves is None:
+        return ""
+    back = "" if back_after_ms is None else f"setTimeout(() => board.style.visibility = 'visible', {back_after_ms});"
+    return f"""<script>
+const board = document.querySelector("img");
+let movesLeft = {moves};
+board.addEventListener("pointerup", () => {{
+  if (--movesLeft === 0) {{ board.style.visibility = "hidden"; {back} }}
+}});
+</script>"""
 
 
 def _later(html: str, ms: int) -> str:
