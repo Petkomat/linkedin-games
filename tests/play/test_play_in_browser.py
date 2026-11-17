@@ -64,6 +64,14 @@ def one_by_one(actions) -> list:
     ]
 
 
+def presses(game: str, screenshot: str) -> int:
+    """How often the player presses the mouse on the board to solve
+    `screenshot`: once per click, and once per drag."""
+    rules = GAMES[game]
+    moves = one_by_one(rules.moves(rules.scan(example(game, screenshot)).puzzle))
+    return sum(not isinstance(move, Press) for move in moves)
+
+
 def same_gestures(recorded, expected) -> bool:
     """Equal, except that a drag may cross more cells than it names: going from
     one corner of a patch to the other crosses the cells in between."""

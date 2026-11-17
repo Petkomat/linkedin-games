@@ -19,9 +19,11 @@ uv run --extra browser python -m engines.play queens     # or tango, sudoku, pat
 2. The game opens with its board already showing; no game has a start button.
    The screen is read until the same board is read twice in a row, so a
    board that is still fading in isn't played, and that board has a solution.
-3. The moves are played. Two seconds after the last one, the screen is saved
+3. The moves are played. Then the final screen, the finished board or the
+   game's result screen, is saved
    as `plays/<game>/<date>_<time>.png`, for example
-   `plays/zip/2026-11-10_14-03-07.png` (`-o` saves it elsewhere). Next to it,
+   `plays/zip/2026-11-10_14-03-07.png` (`-o` saves it elsewhere). See
+   [The final screen](#the-final-screen) for how long that takes. Next to it,
    a `.md` file of the same name holds the solution as a readable table, with a
    legend ([`report.py`](report.py)). It is written as soon as the board is
    solved, before the first move. `plays/` is
@@ -94,6 +96,35 @@ but moves the mouse in page pixels. The screenshot is of the window only
 isn't looked up in the page's HTML at all, so it doesn't matter if the game
 sits in an iframe.
 
+## The final screen
+
+On its way from the finished board to its result screen, LinkedIn may show
+only its top bar over an empty grey page for a while. Zip and Wend nearly
+always did for more than 2 s, so a fixed wait saved a blank screen. Instead,
+[`Player.final_screen`](browser.py) waits until the page isn't blank, and both
+`python -m engines.play` and `guest play` save what it returns:
+
+- It first looks 2 s after the last move, which gives the game time to take
+  it. Queens, Tango and Mini Sudoku show their board then, and it is saved
+  straight away.
+- While the page is blank, it looks again every second. A screen that shows
+  up after a blank one gets one more second to finish fading in.
+- 20 s after the last move, it stops waiting and saves the last screenshot,
+  blank or not. The game was finished, so the play still counts as done;
+  `engines.play` says that the page looked blank.
+
+The times are in `ResultWait` ([`result.py`](result.py)), and `looks_blank`
+there decides what is blank. It looks below the top tenth of the screen
+(LinkedIn's bar and the game's bar) and only at the middle third of its width,
+where LinkedIn puts its games; LinkedIn's messaging box in the bottom right
+corner doesn't count. A row in there shows something if its colours differ
+by more than 10 levels of 255, and the page is blank if fewer than 1 row in 10
+does. The empty page under queens2.png's bars has 1.5% such rows. The whole
+pages in `examples` have 59% to 94%, at full and half resolution, and so has
+queens2.png with its board painted over, the way a result screen may have no
+grid. A board is not read for this, because a result screen may have no grid
+to read.
+
 ## Live check
 
 `uv run --extra browser python -m engines.play.check [game ...]` checks that
@@ -125,6 +156,11 @@ days.
   event. The player reads, solves and plays that page. The recorded events
   must hit the cells of the moves worked out from the original screenshot
   file. It is skipped without the `browser` extra.
+- `tests/play/test_play_result.py`: what counts as blank, on real LinkedIn
+  pages, and the wait for the final screen on a stand-in page whose
+  screenshots are given one by one. `test_play_cli.py` and
+  `test_play_guest.py` play on a local page that goes blank after the last
+  move, like LinkedIn's, for both players.
 
 ## Not done yet
 

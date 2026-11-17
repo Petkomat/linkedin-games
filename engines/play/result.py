@@ -5,8 +5,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import numpy as np
 from PIL import Image
+
+from ..vision import load_rgb
 
 TOP = 0.1  # LinkedIn's top bar, and the game's bar under it, sit in about the top tenth
 FLAT = 10  # a row whose colours differ by no more than this (of 255) shows nothing
@@ -35,7 +36,7 @@ def looks_blank(screenshot: Image.Image) -> bool:
 
     Only the middle third is looked at, where LinkedIn puts its games, so
     LinkedIn's messaging box in the bottom right corner doesn't count."""
-    pixels = np.asarray(screenshot.convert("RGB"), dtype=np.int16)
+    pixels = load_rgb(screenshot)
     height, width, _ = pixels.shape
     page = pixels[round(height * TOP) :, width // 3 : width - width // 3]
     spread = (page.max(axis=1) - page.min(axis=1)).max(axis=1)  # per row, the most of any colour

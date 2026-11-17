@@ -20,7 +20,7 @@ from engines.play.timing import INSTANT as NO_WAITING
 from tests.helpers import example
 
 from .pages import SCALE, page_file, page_showing, showing
-from .test_play_in_browser import gestures, one_by_one, same_gestures
+from .test_play_in_browser import gestures, one_by_one, presses, same_gestures
 
 pytest.importorskip("playwright.sync_api", reason="needs: uv sync --extra browser")
 
@@ -91,17 +91,12 @@ def play_queens1(browser, out, result_wait: ResultWait, **ending) -> bool:
         return play(page, queens, out, player, start_wait=5, board_wait=8)
 
 
-def presses_to_solve_queens1() -> int:
-    queens = GAMES["queens"]
-    return len(one_by_one(queens.moves(queens.scan(example("queens", "queens1.png")).puzzle)))
-
-
 def test_a_guest_play_waits_out_a_blank_page_after_the_last_move_and_saves_what_shows_next(browser, tmp_path):
     # Zip and Wend went blank for more than 2 s on their way to the result screen.
     out = tmp_path / "out"
     wait = ResultWait(first_look=0.5, limit=10, poll=0.2, settle=0.2)
 
-    played = play_queens1(browser, out, wait, blank_after_moves=presses_to_solve_queens1(), back_after_ms=2500)
+    played = play_queens1(browser, out, wait, blank_after_moves=presses("queens", "queens1.png"), back_after_ms=2500)
 
     assert played
     queens = GAMES["queens"]
@@ -113,7 +108,7 @@ def test_a_guest_play_whose_page_stays_blank_still_counts_and_keeps_the_last_scr
     out = tmp_path / "out"
     wait = ResultWait(first_look=0.2, limit=1, poll=0.2, settle=0)
 
-    played = play_queens1(browser, out, wait, blank_after_moves=presses_to_solve_queens1())
+    played = play_queens1(browser, out, wait, blank_after_moves=presses("queens", "queens1.png"))
 
     assert played
     assert (out / "queens.png").exists()
