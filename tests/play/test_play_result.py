@@ -98,15 +98,21 @@ class Frames:
     after another, and the last one for ever after."""
 
     def __init__(self, *frames: Image.Image) -> None:
-        self.frames = frames
+        # Encoded once here, so the timing checks below are about the wait,
+        # not about how fast this machine saves a 3747x1955 PNG.
+        self.frames = tuple(png_bytes(frame) for frame in frames)
         self.shots = 0
 
     def screenshot(self) -> bytes:
-        frame = self.frames[min(self.shots, len(self.frames) - 1)]
+        png = self.frames[min(self.shots, len(self.frames) - 1)]
         self.shots += 1
-        png = io.BytesIO()
-        frame.save(png, "PNG")
-        return png.getvalue()
+        return png
+
+
+def png_bytes(frame: Image.Image) -> bytes:
+    png = io.BytesIO()
+    frame.save(png, "PNG")
+    return png.getvalue()
 
 
 def same(a: Image.Image, b: Image.Image) -> bool:
