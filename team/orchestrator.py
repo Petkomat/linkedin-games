@@ -380,7 +380,8 @@ class Orchestrator:
                 branch, verdict.get("title") or issue.title, summary + PARAGRAPH + f"Closes #{issue.number}"
             )
             self._move(issue, READY, f"The Operator is done: {summary}" + PARAGRAPH + f"#{pr.number} is ready to merge once @{self.owner} approves it.", event)
-            self.github.request_review(pr.number, self.owner)
+            # the comment above mentions the owner, so a failed request is only noted on the board
+            self._guarded(issue.number, self.github.request_review, pr.number, self.owner)
 
     def _await_owner(self, issue: Issue) -> None:
         """A ready PR merges once the owner approves it, and goes back to the

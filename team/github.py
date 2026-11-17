@@ -137,7 +137,9 @@ class GhGitHub:
         self._gh("pr", "review", str(pr), "--comment", "--body-file", "-", stdin=body)
 
     def request_review(self, pr: int, user: str) -> None:
-        self._gh("pr", "edit", str(pr), "--add-reviewer", user)
+        """Through the REST API: `gh pr edit --add-reviewer` also reads the
+        repo's teams, which needs a scope the team's token doesn't have."""
+        self.run(["api", "-X", "POST", f"repos/{self.repo}/pulls/{pr}/requested_reviewers", "-f", f"reviewers[]={user}"])
 
     def merge(self, pr: int) -> None:
         self._gh("pr", "merge", str(pr), "--squash", "--delete-branch")

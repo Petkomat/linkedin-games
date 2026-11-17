@@ -190,6 +190,19 @@ def operated(github, agents, team, **issue) -> int:
     return number
 
 
+def test_a_failed_review_request_still_leaves_the_pr_ready_and_files_what_was_found(github, agents, team):
+    github.review_request_error = RuntimeError("gh: the token lacks a scope")
+    number = approved(github, agents, team)
+    found = {"title": "CI caches nothing", "body": "uv's cache is cold on every run."}
+
+    agents.finish("operator", number, Verdict({"status": "ready", "summary": "Rebased.", "found": [found]}))
+    team.tick(T0)
+
+    assert github.stage(number) == "ready", "the owner is mentioned on the task anyway"
+    assert any(issue.title == found["title"] for issue in github.open_issues())
+    assert any("lacks a scope" in error for error in team.errors), "the board shows it"
+
+
 def test_a_ready_pr_waits_for_the_owner_s_review(github, agents, team):
     number = operated(github, agents, team)
 

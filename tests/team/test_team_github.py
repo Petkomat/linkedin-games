@@ -99,20 +99,28 @@ def test_writing_sends_these_gh_commands():
     github.close(7, not_planned=True)
     github.assign(7, "team-bot")
     github.review(12, "Review 1 of 3")
-    github.request_review(12, "owner")
     github.merge(12)
 
     sent = [(" ".join(args[: args.index("--repo")]), stdin) for args, stdin in gh.calls if args[0] != "pr" or args[1] != "list"]
-    assert sent[:7] == [
+    assert sent[:6] == [
         ("issue comment 7 --body-file -", "Hello"),
         ("issue edit 7 --add-label stage:develop", None),
         ("issue edit 7 --remove-label stage:triage", None),
         ("issue close 7 --reason not planned", None),
         ("issue edit 7 --add-assignee team-bot", None),
         ("pr review 12 --comment --body-file -", "Review 1 of 3"),
-        ("pr edit 12 --add-reviewer owner", None),
     ]
-    assert sent[7][0] == "pr merge 12 --squash --delete-branch"
+    assert sent[6][0] == "pr merge 12 --squash --delete-branch"
+
+
+def test_a_review_is_requested_through_the_rest_api():
+    # `gh pr edit --add-reviewer` also reads the repo's teams, which a token
+    # with only the repo scope may not: it failed for the team's account.
+    gh = Gh()
+
+    GhGitHub(REPO, gh).request_review(12, "owner")
+
+    assert gh.calls == [(["api", "-X", "POST", f"repos/{REPO}/pulls/12/requested_reviewers", "-f", "reviewers[]=owner"], None)]
 
 
 def test_a_part_becomes_a_sub_issue_of_its_task_by_the_part_s_id():

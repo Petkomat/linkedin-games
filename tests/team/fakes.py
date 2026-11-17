@@ -24,6 +24,7 @@ class FakeGitHub:
         self.review_requests: list[tuple[int, str]] = []
         self.merged: list[int] = []
         self.merge_error: Exception | None = None
+        self.review_request_error: Exception | None = None
         self.now = T0
 
     # The interface the orchestrator uses.
@@ -72,6 +73,8 @@ class FakeGitHub:
         self.reviews.setdefault(pr, []).append(Comment(self.bot, body, self.now))
 
     def request_review(self, pr: int, user: str) -> None:
+        if self.review_request_error:
+            raise self.review_request_error
         self.review_requests.append((pr, user))
 
     def merge(self, pr: int) -> None:
