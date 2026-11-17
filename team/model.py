@@ -10,7 +10,9 @@ from typing import Any
 # The labels that carry a task's state on GitHub.
 STAGE = "stage:"  # stage:triage, stage:develop, stage:review, stage:ops, stage:ready
 TRIAGE, DEVELOP, REVIEW, OPS, READY = "triage", "develop", "review", "ops", "ready"
+SPLIT = "split"  # stage:split, a task done as its parts, its sub-issues
 NEEDS_HUMAN = "needs-human"
+BLOCKED = "blocked"  # a part that waits for the part before it
 INCIDENT = "kind:incident"
 NEW_GAME = "kind:new-game"
 DECLINED = "declined"

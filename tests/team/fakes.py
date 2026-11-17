@@ -16,6 +16,7 @@ class FakeGitHub:
         self.owner, self.bot = owner, bot
         self.issues: dict[int, Issue] = {}
         self.closed: dict[int, str] = {}  # number -> "completed" or "not planned"
+        self.sub_issues: dict[int, list[int]] = {}  # parent -> its sub-issues, in order
         self.comments: dict[int, list[Comment]] = {}
         self.prs: dict[str, PullRequest] = {}  # by branch
         self.pr_bodies: dict[int, str] = {}
@@ -46,6 +47,9 @@ class FakeGitHub:
 
     def close(self, number: int, not_planned: bool = False) -> None:
         self.closed[number] = "not planned" if not_planned else "completed"
+
+    def add_sub_issue(self, parent: int, child: int) -> None:
+        self.sub_issues.setdefault(parent, []).append(child)
 
     def assign(self, number: int, login: str) -> None:
         issue = self.issues[number]

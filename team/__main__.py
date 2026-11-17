@@ -13,6 +13,7 @@ The team bot's account comes from ~/.linkedin-games/team.env:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -35,6 +36,9 @@ JOURNAL = HOME / "team" / "orchestrator.log"
 REPO_DIR = Path(__file__).resolve().parent.parent
 ROLE_TEXTS = Path(__file__).resolve().parent / "roles"
 PORT = 8765
+PLUGINS = Path.home() / ".claude" / "plugins" / "installed_plugins.json"
+# The Project Manager splits large tasks with this skill, wrapped by roles/project-manager.md.
+TO_TICKETS = ("mattpocock-skills@claude-plugins-official", "skills/engineering/to-tickets/SKILL.md")
 
 LABELS = {
     "stage:triage": ("c5def5", "The Project Manager decides what this is"),
@@ -42,6 +46,8 @@ LABELS = {
     "stage:review": ("5319e7", "The Reviewer judges the PR"),
     "stage:ops": ("0e8a16", "The Operator gets it ready to merge"),
     "stage:ready": ("fbca04", "Waits for the owner's approval"),
+    "stage:split": ("bfdadc", "Done as its parts, its sub-issues, one at a time"),
+    "blocked": ("e4e669", "A part that waits for the part before it"),
     "needs-human": ("d93f0b", "Waits for the owner's decision"),
     "kind:incident": ("b60205", "A built game or the team broke"),
     "kind:new-game": ("0052cc", "A new game on LinkedIn"),
@@ -82,7 +88,28 @@ def repo_name() -> str:
 
 def prompts() -> dict[str, str]:
     shared = (ROLE_TEXTS / "conventions.md").read_text(encoding="utf-8")
-    return {name: shared + "\n\n" + (ROLE_TEXTS / f"{name}.md").read_text(encoding="utf-8") for name in BY_NAME}
+    texts = {name: shared + "\n\n" + (ROLE_TEXTS / f"{name}.md").read_text(encoding="utf-8") for name in BY_NAME}
+    method = skill(*TO_TICKETS)
+    if method is None:
+        say(f"The {TO_TICKETS[0]} plugin's to-tickets skill isn't installed: the Project Manager splits without it.")
+        method = "(Not installed here. Cut the work into tracer-bullet vertical slices: each a narrow but complete, tested path, prefactoring first.)"
+    texts["project-manager"] += "\n\n## The to-tickets method\n\n" + method
+    return texts
+
+
+def skill(plugin: str, path: str) -> str | None:
+    """An installed Claude Code plugin's skill, without its front matter. A
+    skill that only the user may invoke still reads fine as instructions."""
+    try:
+        installs = json.loads(PLUGINS.read_text(encoding="utf-8"))["plugins"][plugin]
+    except (OSError, KeyError, ValueError):
+        return None
+    for install in sorted(installs, key=lambda i: i.get("scope") != "user"):  # the owner's own install first
+        file = Path(install.get("installPath", "")) / path
+        if file.is_file():
+            text = file.read_text(encoding="utf-8").replace("\r\n", "\n")
+            return re.sub(r"\A---\n.*?\n---\n", "", text, flags=re.DOTALL).strip()
+    return None
 
 
 def say(text: str) -> None:

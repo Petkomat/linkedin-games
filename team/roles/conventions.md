@@ -68,3 +68,10 @@ you need; LinkedIn doesn't welcome bots.
   approves, then the orchestrator merges.
 - Plain commit messages. No Co-Authored-By lines and no other Claude
   attribution in commits or PR text.
+
+## What you find along the way
+
+If you notice a real problem outside your task, such as a bug from history or
+a helper copied between games, don't fix it on this branch. List it in your
+verdict's `found`: a title, and what you saw and where. At most two. The
+orchestrator files each one as a new task, which waits for the owner.

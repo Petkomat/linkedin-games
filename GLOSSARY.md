@@ -59,6 +59,10 @@ _Avoid_: system guy
 One unit of work handed out by the Project Manager: a new game, an incident,
 or anything you ask for.
 
+**Part**:
+One of the tasks that a task too large for one PR is split into. The parts
+are done one at a time, in order.
+
 **Incident**:
 A failure of something already built, such as a game that no longer reads
 today's board, found by the Watcher.

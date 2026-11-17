@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Any, Protocol
 
 from .model import (
+    BLOCKED,
     DECLINED,
     DEVELOP,
     INCIDENT,
@@ -24,6 +25,7 @@ from .model import (
     OPS,
     READY,
     REVIEW,
+    SPLIT,
     STAGE,
     TRIAGE,
     Comment,
@@ -36,7 +38,7 @@ from .model import (
     UsageLimited,
     Verdict,
 )
-from .roles import BY_NAME, ROLES, Role
+from .roles import BY_NAME, MAX_FOUND, MAX_PARTS, ROLES, Role
 
 
 class GitHub(Protocol):
@@ -47,6 +49,8 @@ class GitHub(Protocol):
     def remove_labels(self, number: int, labels: set[str]) -> None: ...
     def close(self, number: int, not_planned: bool = False) -> None: ...
     def assign(self, number: int, login: str) -> None: ...
+    def create_issue(self, title: str, body: str, labels: set[str]) -> int: ...
+    def add_sub_issue(self, parent: int, child: int) -> None: ...
     def pull_request(self, branch: str) -> PullRequest | None: ...
     def open_pull_request(self, branch: str, title: str, body: str) -> PullRequest: ...
     def reviews_on(self, pr: int) -> list[Comment]: ...
@@ -112,7 +116,7 @@ class Orchestrator:
             if NEEDS_HUMAN in t.labels or t.stage == READY
         ]
         queue = [
-            {"issue": t.number, "title": t.title, "stage": t.stage}
+            {"issue": t.number, "title": t.title, "stage": BLOCKED if BLOCKED in t.labels else t.stage}
             for t in self.tasks
             if t.stage in ROLES and NEEDS_HUMAN not in t.labels and t.number not in self.running
         ]
@@ -125,11 +129,13 @@ class Orchestrator:
                 self._guarded(issue.number, self.github.add_labels, issue.number, {STAGE + TRIAGE})
             elif issue.stage == READY and NEEDS_HUMAN not in issue.labels:
                 self._guarded(issue.number, self._await_owner, issue)
+            elif issue.stage == SPLIT and NEEDS_HUMAN not in issue.labels:
+                self._guarded(issue.number, self._follow_parts, issue)
         if self.paused_until and now < self.paused_until:
             return
         for issue in sorted(self._tasks(), key=_priority):
             role = ROLES.get(issue.stage or "")
-            if role is None or NEEDS_HUMAN in issue.labels or issue.number in self.running:
+            if role is None or {NEEDS_HUMAN, BLOCKED} & issue.labels or issue.number in self.running:
                 continue
             if sum(1 for run in self.running.values() if run.job.role == role.name) < role.slots:
                 self._guarded(issue.number, self._start, role, issue, now)
@@ -232,10 +238,29 @@ class Orchestrator:
                 "operator": self._operated,
             }[run.job.role]
             handle(run, issue, outcome.data)
+            self._file_found(run, issue, outcome.data.get("found"))
         elif isinstance(outcome, UsageLimited):
             self.paused_until = max(outcome.until, self.paused_until or outcome.until)
         else:
             self._failed(run, issue, outcome.reason)
+
+    def _file_found(self, run: Running, issue: Issue, found: Any) -> None:
+        """What an agent noticed outside its task becomes a task of its own,
+        which waits for the owner: at most MAX_FOUND a run, and none twice."""
+        items = [item for item in found or [] if isinstance(item, dict) and str(item.get("title", "")).strip()]
+        known = {task.title.strip().lower() for task in self._tasks()}
+        who = run.job.role.replace("-", " ").title()
+        for item in items[:MAX_FOUND]:
+            title = str(item["title"]).strip()
+            if title.lower() in known:
+                continue
+            body = PARAGRAPH.join((
+                f"@{self.owner} The {who} found this while working on #{issue.number}.",
+                str(item.get("body", "")).strip(),
+                f"Remove the `{NEEDS_HUMAN}` label to let the team work on it, or close it.",
+            ))  # fmt: skip
+            self.github.create_issue(title, body, {NEEDS_HUMAN})
+            known.add(title.lower())
 
     def _failed(self, run: Running, issue: Issue, reason: str) -> None:
         """A run that crashed or timed out is tried once more; after the second
@@ -259,6 +284,8 @@ class Orchestrator:
         event = {"role": "project-manager", "decision": decision}
         if decision in (DEVELOP, OPS):
             self._move(issue, decision, note, {**event, "branch": self._branch(issue)})
+        elif decision == SPLIT:
+            self._split(issue, note, verdict.get("parts"), event)
         elif decision == DECLINED:
             self._record(issue.number, note, event)
             self._set_stage(issue, None)
@@ -270,6 +297,46 @@ class Orchestrator:
             self._record(issue.number, note, {**event, "stage": "done"})
             self._set_stage(issue, None)
             self.github.close(issue.number)
+
+    def _split(self, issue: Issue, note: str, parts: Any, event: dict[str, Any]) -> None:
+        """A task too large for one PR becomes its parts, in order: the plan is
+        written down on the task, and the parts are filed from it."""
+        parts = [p for p in parts or [] if isinstance(p, dict) and str(p.get("title", "")).strip() and p.get("stage") in (DEVELOP, OPS)]
+        plan = "\n".join(f"{k}. {part['title']}" for k, part in enumerate(parts, 1))
+        if not 2 <= len(parts) <= MAX_PARTS:
+            text = f"The Project Manager would split this into {len(parts)} parts, but a split has 2 to {MAX_PARTS}."
+            self._ask_owner(issue, PARAGRAPH.join(t for t in (text, plan, note) if t), event)
+            return
+        plan_text = f"Split into {len(parts)} parts, done one at a time:" + PARAGRAPH + plan
+        self._record(issue.number, PARAGRAPH.join(t for t in (note, plan_text) if t), {**event, "stage": SPLIT, "plan": parts})
+        self._set_stage(issue, SPLIT)
+        self._follow_parts(issue)
+
+    def _follow_parts(self, task: Issue) -> None:
+        """File a split task's parts as its sub-issues, let each start once
+        every part before it is closed, and close the task after the last."""
+        events = self._events(task.number)
+        plans = [e["plan"] for e in events if "plan" in e]
+        if not plans:
+            return
+        plan, filed = plans[-1], [e["issue"] for e in events if "part" in e]
+        kinds = task.labels & {INCIDENT, NEW_GAME}
+        while len(filed) < len(plan):  # one at a time, written down, so a crash files no part twice
+            k, part = len(filed) + 1, plan[len(filed)]
+            after = f" It starts once #{filed[-1]} is closed." if filed else ""
+            body = str(part.get("body", "")).strip() + PARAGRAPH + f"Part {k} of {len(plan)} of #{task.number}.{after}"
+            number = self.github.create_issue(part["title"], body, {STAGE + part["stage"], *kinds, *({BLOCKED} if filed else ())})
+            self._guarded(task.number, self.github.add_sub_issue, task.number, number)
+            self._record(task.number, f"Part {k} of {len(plan)}: #{number}.", {"part": k, "issue": number})
+            filed.append(number)
+        still_open = {t.number: t for t in self._tasks()}
+        waiting = [number for number in filed if number in still_open]
+        if not waiting:
+            self._record(task.number, f"All {len(filed)} parts are closed. Done.", {"stage": "done"})
+            self._set_stage(task, None)
+            self.github.close(task.number)
+        elif BLOCKED in still_open[waiting[0]].labels:
+            self.github.remove_labels(waiting[0], {BLOCKED})
 
     def _developed(self, run: Running, issue: Issue, verdict: dict[str, Any]) -> None:
         summary = verdict.get("summary", "")

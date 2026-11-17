@@ -11,7 +11,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Protocol
 
-from .model import DEVELOP, INCIDENT, NEEDS_HUMAN, OPS, REVIEW, TRIAGE, Issue
+from .model import BLOCKED, DEVELOP, INCIDENT, NEEDS_HUMAN, OPS, REVIEW, TRIAGE, Issue
 
 MARK = re.compile(r"<!-- watch (\{.*?\}) -->")
 AT_WORK = {TRIAGE, DEVELOP, REVIEW, OPS}  # stages where an agent should be busy
@@ -68,7 +68,7 @@ def watch(
         opened.append(incident(github, "ci", "The tests fail on main", f"The latest test run on main failed. Seen by {run_url}.", run_url, now))
     silent = [
         issue for issue in github.open_issues()
-        if issue.stage in AT_WORK and NEEDS_HUMAN not in issue.labels and now - issue.updated > SILENCE and _key(issue.body) != "team"
+        if issue.stage in AT_WORK and not {NEEDS_HUMAN, BLOCKED} & issue.labels and now - issue.updated > SILENCE and _key(issue.body) != "team"
     ]  # fmt: skip
     if silent:
         listed = "\n".join(f"- #{issue.number} {issue.title} ({issue.stage}, last change {issue.updated:%Y-%m-%d %H:%M})" for issue in silent)

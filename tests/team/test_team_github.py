@@ -115,6 +115,15 @@ def test_writing_sends_these_gh_commands():
     assert sent[7][0] == "pr merge 12 --squash --delete-branch"
 
 
+def test_a_part_becomes_a_sub_issue_of_its_task_by_the_part_s_id():
+    # gh has no command for sub-issues; GitHub's API wants the issue's id, not its number.
+    gh = Gh({f"api repos/{REPO}/issues/13": "4242\n"})
+
+    GhGitHub(REPO, gh).add_sub_issue(7, 13)
+
+    assert gh.calls[-1][0] == ["api", "-X", "POST", f"repos/{REPO}/issues/7/sub_issues", "-F", "sub_issue_id=4242"]
+
+
 def test_opening_a_pr_returns_it():
     gh = Gh({"pr create": "https://github.com/owner/linkedin-games/pull/13\n", "pr list": [{"number": 13, "headRefName": "team/7-x", "url": "u", "latestReviews": []}]})
 

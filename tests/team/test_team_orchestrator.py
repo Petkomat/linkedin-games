@@ -369,6 +369,88 @@ def test_a_task_that_needs_no_work_is_closed(github, agents, team):
     assert agents.running() == []
 
 
+PARTS = [
+    {"title": "Sumbreak: read the board", "body": "## What to build\n\nscan() reads today's board.", "stage": "develop"},
+    {"title": "Sumbreak: solve it", "body": "## What to build\n\nsolve() with a trace.", "stage": "develop"},
+    {"title": "Sumbreak: play it", "body": "## What to build\n\nHuman-like moves.", "stage": "develop"},
+]
+
+
+def split(github, agents, team, parts) -> int:
+    """A new game the Project Manager splits into `parts`."""
+    number = github.open_issue("New game: Sumbreak", labels=("kind:new-game",))
+    team.tick(T0)
+    agents.finish("project-manager", number, Verdict({"decision": "split", "comment": "Too much for one PR.", "parts": parts}))
+    team.tick(T0)
+    return number
+
+
+def test_a_task_too_large_for_one_pr_is_split_into_sub_issues_done_one_at_a_time(github, agents, team):
+    number = split(github, agents, team, PARTS)
+
+    parts = github.sub_issues[number]
+    assert [github.issues[part].title for part in parts] == [part["title"] for part in PARTS]
+    assert github.stage(number) == "split"
+    first, *later = parts
+    assert github.stage(first) == "develop" and "blocked" not in github.labels(first)
+    assert all("blocked" in github.labels(part) for part in later)
+    assert all("kind:new-game" in github.labels(part) for part in parts), "they keep the task's place in the queue"
+    assert "scan() reads today's board." in github.issues[first].body and f"#{number}" in github.issues[first].body
+    assert agents.running() == [("developer", first)]
+
+
+def test_once_a_part_is_closed_the_next_starts_and_after_the_last_the_task_closes(github, agents, team):
+    number = split(github, agents, team, PARTS)
+    first, second, third = github.sub_issues[number]
+
+    github.close(first)
+    team.tick(T0)
+
+    assert "blocked" not in github.labels(second)
+    assert ("developer", second) in agents.running()
+    assert "blocked" in github.labels(third)
+
+    github.close(second)
+    github.close(third, not_planned=True)  # the owner may drop a part
+    team.tick(T0)
+
+    assert github.closed[number] == "completed"
+
+
+def test_a_task_that_would_need_more_than_six_parts_goes_to_the_owner(github, agents, team):
+    number = split(github, agents, team, [PARTS[0]] * 7)
+
+    assert "needs-human" in github.labels(number)
+    assert number not in github.sub_issues
+
+
+def test_what_an_agent_finds_along_the_way_becomes_a_task_that_waits_for_the_owner(github, agents, team):
+    number = triaged(github, agents, team, "develop")
+    found = {"title": "Tango misreads a sign on 2x screens", "body": "The = at row 3, column 4 of tango2.png reads as x."}
+
+    agents.finish("developer", number, Verdict({"status": "ready", "summary": "Fixed.", "found": [found]}))
+    team.tick(T0)
+
+    [new] = [issue for issue in github.open_issues() if issue.title == found["title"]]
+    assert "needs-human" in new.labels and new.stage is None, "the owner lets it in, or closes it"
+    assert found["body"] in new.body and f"#{number}" in new.body and "@owner" in new.body
+    assert agents.running() == [("reviewer", number)], "the task itself goes on"
+
+
+def test_a_run_files_at_most_two_finds_and_nothing_twice(github, agents, team):
+    number = triaged(github, agents, team, "develop")
+    finds = [{"title": f"Problem {k}", "body": "Seen in passing."} for k in (1, 2, 3)]
+    agents.finish("developer", number, Verdict({"status": "stuck", "summary": "May I add scipy?", "found": finds}))
+    team.tick(T0)
+    github.remove_labels(number, {"needs-human"})
+    team.tick(T0)
+
+    agents.finish("developer", number, Verdict({"status": "stuck", "summary": "Still stuck.", "found": finds[:1]}))
+    team.tick(T0)
+
+    assert sorted(issue.title for issue in github.open_issues() if issue.title.startswith("Problem")) == ["Problem 1", "Problem 2"]
+
+
 def test_a_verdict_that_makes_no_sense_counts_as_a_failed_run(github, agents, team):
     number = triaged(github, agents, team, "dance")
 

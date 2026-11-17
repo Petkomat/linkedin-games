@@ -71,6 +71,7 @@ def test_a_waiting_owner_or_a_busy_team_is_no_incident():
     github = FakeGitHub()
     github.open_issue("Waits for the owner", labels=("stage:develop", "needs-human"), age=timedelta(days=3))
     github.open_issue("Being worked on", labels=("stage:review",), age=timedelta(hours=2))
+    github.open_issue("Part 3 of a split task", labels=("stage:develop", "blocked"), age=timedelta(days=3))
 
     watch(github, {"queens": True, "zip": True}, TITLES, RUN, T0)
 

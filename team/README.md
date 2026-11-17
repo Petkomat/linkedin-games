@@ -19,11 +19,12 @@ GitHub Actions, daily (daily.yml)        the owner's machine (python -m team run
 
 | Stage | Who | When it's done |
 |---|---|---|
-| triage | Project Manager (Sonnet) | develop · ops · declined (a knowledge game) · needs-human · done |
+| triage | Project Manager (Sonnet) | develop · ops · split · declined (a knowledge game) · needs-human · done |
 | develop | Developer ×2 (Opus) | builds test-first, plays once as a guest, pushes → review |
 | review | Reviewer ×2 (Opus) | its review goes on the PR: approve → ops · changes → develop; after the third, the owner decides |
 | ops | Operator ×1 (Sonnet) | rebase, tests, CI → ready |
 | ready | the owner | approves the PR: the orchestrator merges it and closes the task |
+| split | the orchestrator | files the parts as sub-issues and starts each once the one before is closed; closes the task after the last |
 
 - **GitHub is the only state.** A task is an issue, and its stage is a label.
   The team's account is the assignee of every task it works on, and stays so
@@ -36,6 +37,15 @@ GitHub Actions, daily (daily.yml)        the owner's machine (python -m team run
 - **Each agent** is the `claude` CLI, run headless in its task's own git
   worktree. Its role's prompt is [roles/](roles), and it may use only its
   role's tools ([roles.py](roles.py)): anything else is refused, never asked.
+- **A task too large for one PR** is split by the Project Manager into 2 to 6
+  parts, with the to-tickets skill: the orchestrator puts the installed skill
+  into its prompt, and [roles/project-manager.md](roles/project-manager.md)
+  replaces the skill's quiz and publishing, since nobody answers and only the
+  orchestrator files issues. The parts are the task's sub-issues, done one at
+  a time: each waits as `blocked` until the one before it is closed.
+- **What an agent finds** outside its task, such as a bug from history, goes
+  in its verdict, at most two a run. The orchestrator files each as a new
+  issue that waits for the owner. Agents never file issues themselves.
 - **Queue order**: incidents, then new games, then the rest. A run that fails
   is retried once; a second failure goes to the owner. At Claude's usage
   limit, the team pauses until the limit resets.
@@ -71,7 +81,11 @@ The team mentions you on GitHub, and the board lists the task under
   third review didn't approve, or a merge failed. Answer in
   a comment on the issue, then remove the `needs-human` label. The task goes
   on where it stopped, and the agent reads your comment. A Developer picks up
-  its own earlier session.
+  its own earlier session. You can answer on the PR too.
+- **Something an agent found** (a new issue with `needs-human`): remove the
+  label to give it to the team, or close it.
+- **A split task**: nothing to do, but you may edit a part before it starts,
+  or close one to skip it.
 
 ## Setup
 

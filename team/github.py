@@ -87,6 +87,12 @@ class GhGitHub:
         url = self._gh("issue", "create", "--title", title, "--body-file", "-", "--label", ",".join(sorted(labels)), stdin=body)
         return int(url.strip().rstrip("/").split("/")[-1])
 
+    def add_sub_issue(self, parent: int, child: int) -> None:
+        """Show `child` under `parent` on GitHub. `gh api` names the repo in
+        its path, so these calls don't go through _gh."""
+        child_id = self.run(["api", f"repos/{self.repo}/issues/{child}", "--jq", ".id"]).strip()
+        self.run(["api", "-X", "POST", f"repos/{self.repo}/issues/{parent}/sub_issues", "-F", f"sub_issue_id={child_id}"])
+
     def all_issues(self, label: str) -> list[Issue]:
         """Open and closed issues with this label, for the Scout and the Watcher."""
         fields = "number,title,body,author,labels,createdAt,updatedAt"

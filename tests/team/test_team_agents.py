@@ -86,6 +86,22 @@ def test_the_run_must_end_with_the_role_s_verdict():
     assert "status" in schema["required"]
 
 
+def test_any_verdict_may_list_what_the_agent_found_along_the_way():
+    for role in BY_NAME.values():
+        found = json.loads(option(command(job(role.name), role), "--json-schema"))["properties"]["found"]
+        assert found["type"] == "array"
+        assert found["items"]["required"] == ["title", "body"]
+
+
+def test_the_project_manager_may_split_a_task_into_parts_for_the_developer_or_the_operator():
+    schema = json.loads(option(command(job("project-manager"), PROJECT_MANAGER), "--json-schema"))
+
+    assert "split" in schema["properties"]["decision"]["enum"]
+    part = schema["properties"]["parts"]["items"]
+    assert part["required"] == ["title", "body", "stage"]
+    assert part["properties"]["stage"]["enum"] == ["develop", "ops"]
+
+
 def test_a_first_run_names_its_session_and_a_later_one_resumes_it():
     assert option(command(job(), DEVELOPER), "--session-id") == "5f0c-session"
     argv = command(job(resume=True), DEVELOPER)
