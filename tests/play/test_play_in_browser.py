@@ -136,7 +136,10 @@ def offset_in_cell(grid: GridGeometry, x: float, y: float) -> tuple[float, float
     return (x - middle_x) / grid.xs.pitch, (y - middle_y) / grid.ys.pitch
 
 
-def test_a_patch_is_drawn_in_a_smooth_half_second_drag(browser):
+def test_the_page_sees_a_patch_drag_glide_for_at_least_half_a_second(browser):
+    # No upper limit: a busy machine makes a drag take longer, never shorter.
+    # That it takes about half a second is checked on a stand-in clock, in
+    # test_play_drag.py.
     rules = GAMES["patches"]
     page = page_showing(browser, example("patches", "patches1.png"))
     player = Player(page, tempo=NO_WAITING, rng=random.Random(1))
@@ -152,5 +155,5 @@ def test_a_patch_is_drawn_in_a_smooth_half_second_drag(browser):
         elif event["type"] == "pointerup" and moves:
             drags.append((event["t"] - pressed, moves))
     assert drags
-    assert all(450 <= ms <= 800 for ms, _ in drags), "about half a second each"
+    assert all(ms >= 450 for ms, _ in drags), "never instant"
     assert all(moves >= 10 for _, moves in drags), "the mouse glides; it doesn't jump"

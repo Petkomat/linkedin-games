@@ -3,13 +3,12 @@
 LinkedIn may show an empty page for a while on its way from the board to its
 result screen: its top bar over a flat grey page. The player waits until the
 page shows something else, the finished board or the result screen, which may
-have no grid at all.
+have no grid at all. How long it waits is measured on a stand-in clock.
 """
 
 from __future__ import annotations
 
 import io
-import time
 
 import numpy as np
 import pytest
@@ -19,6 +18,8 @@ from engines.play.browser import Player
 from engines.play.games import GAMES
 from engines.play.result import ResultWait, looks_blank
 from tests.helpers import example
+
+from .clock import StandInClock
 
 # Measured on queens2.png, a whole LinkedIn page
 PAGE_GREY = (244, 242, 238)  # the page's background
@@ -98,8 +99,7 @@ class Frames:
     after another, and the last one for ever after."""
 
     def __init__(self, *frames: Image.Image) -> None:
-        # Encoded once here, so the timing checks below are about the wait,
-        # not about how fast this machine saves a 3747x1955 PNG.
+        # Encoded once here: saving a 3747x1955 PNG for every look is slow.
         self.frames = tuple(png_bytes(frame) for frame in frames)
         self.shots = 0
 
@@ -135,26 +135,24 @@ def test_blank_screens_are_waited_out_and_the_first_one_that_shows_something_is_
 
 
 def test_a_page_that_stays_blank_is_waited_for_until_the_limit_and_then_taken_as_it_is():
-    page = Frames(blank_page())
+    page, clock = Frames(blank_page()), StandInClock()
     wait = ResultWait(first_look=0.1, limit=0.6, poll=0.1)
 
-    started = time.monotonic()
-    final = Player(page, result_wait=wait).final_screen()
+    final = Player(page, result_wait=wait, clock=clock).final_screen()
 
-    assert 0.6 <= time.monotonic() - started < 1.2
+    assert clock.now() == pytest.approx(0.6)
     assert page.shots > 2, "it kept looking"
     assert same(final, blank_page())
 
 
 def test_a_page_that_shows_something_at_the_first_look_is_taken_at_once():
     # Queens, Tango and Mini Sudoku have always shown their board 2 s after the last move.
-    page = Frames(board())
+    page, clock = Frames(board()), StandInClock()
     wait = ResultWait(first_look=0.3, limit=10, poll=0.1)
 
-    started = time.monotonic()
-    final = Player(page, result_wait=wait).final_screen()
+    final = Player(page, result_wait=wait, clock=clock).final_screen()
 
-    assert 0.3 <= time.monotonic() - started < 0.8
+    assert clock.now() == pytest.approx(0.3)
     assert page.shots == 1
     assert same(final, board())
 
@@ -178,11 +176,10 @@ def test_a_screen_that_shows_up_and_goes_again_is_kept():
 
 
 def test_the_settling_ends_at_the_limit_too():
-    page = Frames(blank_page(), board())
+    page, clock = Frames(blank_page(), board()), StandInClock()
     wait = ResultWait(first_look=0, limit=0.3, poll=0.05, settle=5)
 
-    started = time.monotonic()
-    final = Player(page, result_wait=wait).final_screen()
+    final = Player(page, result_wait=wait, clock=clock).final_screen()
 
-    assert time.monotonic() - started < 0.8
+    assert clock.now() == pytest.approx(0.3), "not the 5 s of settling"
     assert same(final, board())
