@@ -3,7 +3,7 @@
 LinkedIn may show an empty page for a while on its way from the board to its
 result screen: its top bar over a flat grey page. The player waits until the
 page shows something else, the finished board or the result screen, which may
-have no grid at all.
+have no grid at all. How long it waits is measured on a stand-in clock.
 """
 
 from __future__ import annotations

@@ -134,7 +134,7 @@ class Player:
         screen = Screen(grid, self.scale)
         mouse = self.page.mouse
         for wait, action in self.tempo.waits(actions, self.rng):
-            time.sleep(wait)
+            self.clock.sleep(wait)
             if isinstance(action, Click):
                 row, col = action.cell
                 d_row, d_col = spot(self.rng)
@@ -149,11 +149,11 @@ class Player:
     def _drag(self, screen: Screen, cells: tuple[Cell, ...]) -> None:
         """Press, move along the hand's timeline as the clock runs, release."""
         timeline = drag(cells, self.rng, self.hand)
-        mouse = self.page.mouse
+        mouse, clock = self.page.mouse, self.clock
         mouse.move(*screen.position(*timeline[0][1:]))
         mouse.down()
-        pressed = time.perf_counter()
+        pressed = clock.now()
         for seconds, row, col in timeline[1:]:
-            time.sleep(max(0.0, pressed + seconds - time.perf_counter()))
+            clock.sleep(max(0.0, pressed + seconds - clock.now()))
             mouse.move(*screen.position(row, col))
         mouse.up()
