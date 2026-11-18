@@ -25,3 +25,12 @@ SUMBREAK1 = board("""
      4  2 32
      4  4 16
 """)
+
+# Typed in from examples/sumbreak/sumbreak4.png: sumbreak1 three merges on,
+# with two empty cells. The 4 on top has no neighbour left that it could ever
+# merge with: a dead end, played on purpose to try the controls.
+SUMBREAK4 = board("""
+     .  4 64
+     4  . 32
+     4  4 16
+""")
