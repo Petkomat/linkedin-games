@@ -1,5 +1,5 @@
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from engines.sumbreak import Puzzle
 from engines.sumbreak.ocr import read_puzzle, scan
@@ -61,6 +61,20 @@ def test_reads_a_large_board_with_empty_cells(circles, scale):
 
     assert seen.puzzle == puzzle
     assert seen.grid.center(0, 0) == pytest.approx(((MARGIN + 32) * scale, (MARGIN + 32) * scale), abs=1)
+
+
+def test_coloured_things_above_the_board_are_not_part_of_it():
+    # A signed-in member's top bar has LinkedIn's blue logo, a red dot and a
+    # round photo in a row, and they may sit right above columns of tiles.
+    puzzle = random_puzzle(4, 4, seed=1, spread=3)
+    page = drawn(puzzle)
+    draw = ImageDraw.Draw(page)
+    x = MARGIN + 1.5 * 96  # above the middle of the second column (4 columns of 96 px)
+    draw.rounded_rectangle((20, 20, 70, 70), radius=6, fill=(10, 102, 194))
+    draw.ellipse((x - 25, 20, x + 25, 70), fill=(233, 30, 99))
+    draw.ellipse((x + 2 * 96 - 20, 25, x + 2 * 96 + 20, 65), fill=(204, 16, 34))  # above the fourth
+
+    assert read_puzzle(page) == puzzle
 
 
 def test_a_board_with_a_single_tile_left_is_no_board():

@@ -84,13 +84,18 @@ show where the cells are.
    blobs of touching pixels, with a union-find over each row's runs. A blob is
    a tile if it is about as high as wide and fills at least 65% of its box (a
    square 98%, a circle 79%).
-2. **Grid:** tiles whose middles are level make up a row, and tiles one above
-   the other a column. A tile alone in its row or column is something else on
-   the page. The pitch is the board's span divided by its number of steps.
+2. **Board:** tiles whose middles are level make up a row, and tiles one
+   above the other a column. The step between cells is the most usual
+   distance from a tile to the nearest one in its row or column. On a board
+   that can be solved, every tile has a neighbour one step away. So the board
+   is the biggest group of tiles linked that way, and coloured things
+   elsewhere aren't part of it, even right above a column: a signed-in
+   member's top bar has LinkedIn's blue logo, a red dot and a round photo.
+3. **Grid:** the pitch is the board's span divided by its number of steps.
    Rows and columns may be empty, and every tile must sit within 15% of a
    pitch of its cell's middle. A board has at least 3 rows and 3 columns. The
    result screen's icon is a 2x2 board of numbers.
-3. **Numbers:** a number is printed in a darker shade of its tile's colour.
+4. **Numbers:** a number is printed in a darker shade of its tile's colour.
    Its pixels, darker than halfway from the tile's colour to the darkest one,
    go to the shared glyph reader. Paler edges would close the gap of a small
    6, which then reads as 8.
@@ -98,8 +103,9 @@ show where the cells are.
 Tested on the real board in both looks, at devicePixelRatio 1 and 2, on a
 game in progress with emptied cells, and on the result screen (no board).
 6x6 boards with empty cells are drawn the way LinkedIn draws them, as
-squares and as circles, at both scales (`tests/sumbreak/pictures.py`). A 2x
-screenshot reads in about 0.14 s.
+squares and as circles, at both scales (`tests/sumbreak/pictures.py`), and
+so is a top bar with things above two of the columns. A 2x screenshot reads
+in about 0.13 s.
 
 ## Moves
 

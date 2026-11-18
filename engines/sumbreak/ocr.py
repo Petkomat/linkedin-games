@@ -10,13 +10,17 @@ show where the cells are.
    them that touch. A blob is a tile if it is about as high as wide and fills
    most of its box: a square nearly all of it, a circle 79%. Text, confetti
    and specks don't.
-2. **Grid:** the board's tiles line up in rows and columns. Tiles whose
-   middles are as high (or as far left) as each other's make up a row (a
-   column). Tiles alone in their row or column are something else on the
-   page, such as an icon. The pitch is the smallest step between two rows or
-   columns, and every other step must be a whole number of pitches: a row or
-   column may be empty.
-3. **Numbers:** a tile's number is printed in a darker shade of its colour.
+2. **Board:** tiles whose middles are as high (or as far left) as each
+   other's are in one row (column). The step between cells is the most usual
+   distance from a tile to the nearest one in its row or column. On a board
+   that can be solved, every tile has a neighbour one step away, so the
+   board is the biggest group of tiles linked that way. Coloured things
+   elsewhere on the page, such as a signed-in member's logo and photo in the
+   top bar, are not linked to it, even when they sit above a column.
+3. **Grid:** the board's rows and columns are evenly spaced, and a row or
+   column may be empty: every step between two of them must be a whole
+   number of pitches.
+4. **Numbers:** a tile's number is printed in a darker shade of its colour.
    Its pixels go to the shared glyph reader.
 """
 
@@ -33,7 +37,8 @@ COLOURFUL = 40  # a pixel whose channels differ by more than this is part of a t
 MIN_SIDE = 12  # px; anything smaller can't hold a readable number
 ROUND = 0.8  # a tile's box is at most this far from square (height / width)
 FILLED = 0.65  # share of its box a tile fills: a square ~0.98, a circle 0.79, a letter less
-ALIGNED = 0.25  # of the smallest tile's side: how far apart middles in one row or column may be
+ALIGNED = 0.25  # of the usual tile's side: how far apart middles in one row or column may be
+LINKED = 1.5  # steps between cells: neighbours on the board are 1 apart, the next tiles but one 2
 ON_LATTICE = 0.15  # of the pitch: how far a tile's middle may be off its cell's
 MIN_CELLS = 3  # rows and columns; LinkedIn's result screen has a 2x2 board as an icon
 DARKER = 50  # a number's pixels are darker than their tile by more than this
@@ -71,17 +76,22 @@ def scan(image: ImageSource) -> Scan:
     rgb = load_rgb(image)
     r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]  # 5x faster than max and min along the colour axis
     colourful = np.maximum(np.maximum(r, g), b) - np.minimum(np.minimum(r, g), b) > COLOURFUL
-    tiles = _on_board([tile for tile in _blobs(colourful) if _is_tile(tile, colourful)])
-    xs = _lattice([tile.middle[0] for tile in tiles], tiles)
-    ys = _lattice([tile.middle[1] for tile in tiles], tiles)
-    if xs.pitch and abs(ys.pitch / xs.pitch - 1) > ON_LATTICE:
+    tiles = [tile for tile in _blobs(colourful) if _is_tile(tile, colourful)]
+    if not tiles:
+        raise ValueError("no tiles in the image")
+    tolerance = ALIGNED * float(np.median([tile.side for tile in tiles]))
+    tiles = _on_board(tiles, tolerance)
+    xs = _lattice([tile.middle[0] for tile in tiles], tolerance)
+    ys = _lattice([tile.middle[1] for tile in tiles], tolerance)
+    if abs(ys.pitch / xs.pitch - 1) > ON_LATTICE:
         raise ValueError("the tiles are not on a grid of square cells")
     grid = GridGeometry(xs, ys)
     numbers: list[list[int | None]] = [[None] * grid.cols for _ in range(grid.rows)]
     for tile in tiles:
         x, y = tile.middle
         row, col = _index(y, ys), _index(x, xs)
-        number = _number(rgb[tile.top : tile.bottom, tile.left : tile.right], colourful[tile.top : tile.bottom, tile.left : tile.right])
+        box = slice(tile.top, tile.bottom), slice(tile.left, tile.right)
+        number = _number(rgb[box], colourful[box])
         if number is None or numbers[row][col] is not None:
             raise ValueError(f"no single number on the tile in row {row + 1}, column {col + 1}")
         numbers[row][col] = number
@@ -134,27 +144,41 @@ def _is_tile(tile: _Tile, colourful: np.ndarray) -> bool:
     return colourful[tile.top : tile.bottom, tile.left : tile.right].mean() >= FILLED
 
 
-def _on_board(tiles: list[_Tile]) -> list[_Tile]:
-    """The tiles that share a row and a column with other tiles, again and
-    again until no more drop out."""
-    while True:
-        tolerance = ALIGNED * min((tile.side for tile in tiles), default=0)
-        kept = [
-            tile
-            for tile in tiles
-            if sum(abs(other.middle[1] - tile.middle[1]) <= tolerance for other in tiles) > 1
-            and sum(abs(other.middle[0] - tile.middle[0]) <= tolerance for other in tiles) > 1
-        ]
-        if len(kept) == len(tiles):
-            return kept
-        tiles = kept
+def _on_board(tiles: list[_Tile], tolerance: float) -> list[_Tile]:
+    """The biggest group of tiles linked by neighbours one step apart in a row
+    or a column, the step being the most usual distance between such tiles."""
+
+    def apart(a: _Tile, b: _Tile) -> float | None:
+        """How far apart in their row or column; None if in neither."""
+        (ax, ay), (bx, by) = a.middle, b.middle
+        if abs(ay - by) <= tolerance:
+            return abs(ax - bx)
+        return abs(ay - by) if abs(ax - bx) <= tolerance else None
+
+    nearest = [
+        min((d for other in tiles if other is not tile and (d := apart(tile, other)) is not None), default=None)
+        for tile in tiles
+    ]
+    steps = [d for d in nearest if d is not None]
+    if not steps:
+        return []
+    reach = LINKED * float(np.median(steps))
+    left = set(range(len(tiles)))
+    groups = []
+    while left:
+        group, todo = set(), [left.pop()]
+        while todo:
+            i = todo.pop()
+            group.add(i)
+            linked = {j for j in left if (d := apart(tiles[i], tiles[j])) is not None and d <= reach}
+            left -= linked
+            todo += linked
+        groups.append(group)
+    return [tiles[i] for i in max(groups, key=len)]
 
 
-def _lattice(middles: list[float], tiles: list[_Tile]) -> Lattice:
+def _lattice(middles: list[float], tolerance: float) -> Lattice:
     """The rows (or columns) through `middles`: evenly spaced, some maybe empty."""
-    if not tiles:
-        raise ValueError("no tiles in the image")
-    tolerance = ALIGNED * min(tile.side for tile in tiles)
     lines: list[list[float]] = []
     for middle in sorted(middles):
         if lines and middle - lines[-1][-1] <= tolerance:
