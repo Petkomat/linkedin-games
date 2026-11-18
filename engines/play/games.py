@@ -20,6 +20,10 @@ from ..sudoku import moves as sudoku_moves
 from ..sudoku import ocr as sudoku_ocr
 from ..sudoku import render as sudoku_render
 from ..sudoku import solver as sudoku_solver
+from ..sumbreak import moves as sumbreak_moves
+from ..sumbreak import ocr as sumbreak_ocr
+from ..sumbreak import render as sumbreak_render
+from ..sumbreak import solver as sumbreak_solver
 from ..tango import moves as tango_moves
 from ..tango import ocr as tango_ocr
 from ..tango import render as tango_render
@@ -71,6 +75,15 @@ GAMES = {
             scan=sudoku_ocr.scan, moves=sudoku_moves.moves, solve=sudoku_solver.solve,
             solution_text=lambda p, s: sudoku_render.grid_text(s, p.box),
             legend="Lines separate the boxes.",
+        ),
+        _linkedin(
+            "sumbreak", name="sumbreak", title="Sumbreak",
+            scan=sumbreak_ocr.scan, moves=sumbreak_moves.moves, solve=sumbreak_solver.solve,
+            solution_text=sumbreak_render.solution_text,
+            legend=(
+                "Each tile is dragged onto the neighbour its arrow points to, in the merge with its number "
+                "(1 is the first). * is the tile left at the end, . an empty cell."
+            ),
         ),
         _linkedin(
             "tango", name="tango", title="Tango",

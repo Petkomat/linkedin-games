@@ -35,9 +35,17 @@ class Press:
 
 
 @dataclass(frozen=True)
+class Button:
+    """Click the game's button with this text, such as "Undo". It isn't on the
+    board, so the player finds it on the page."""
+
+    label: str
+
+
+@dataclass(frozen=True)
 class Think:
     """Stop to think: the moves after it, up to the next Think, come from one
     deduction (or one guess) and are made in a quick burst."""
 
 
-Action = Click | Drag | Press | Think
+Action = Click | Drag | Press | Button | Think

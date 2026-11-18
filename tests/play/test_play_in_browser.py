@@ -13,12 +13,12 @@ from math import floor
 
 import pytest
 
-from engines.common.actions import Click, Drag, Press, Think
+from engines.common.actions import Button, Click, Drag, Press, Think
 from engines.play.browser import Player
 from engines.play.games import GAMES
 from engines.play.motion import INSTANT
 from engines.play.timing import INSTANT as NO_WAITING
-from engines.vision import GridGeometry
+from engines.vision import GridGeometry, Lattice
 from tests.helpers import example
 
 from .pages import SCALE, page_showing
@@ -96,6 +96,8 @@ def _passes_through(crossed, named) -> bool:
         ("queens", "queens1.png"),
         ("queens", "queens2.png"),  # a whole LinkedIn page, high resolution
         ("sudoku", "sudoku1.png"),
+        ("sumbreak", "sumbreak1.png"),  # squares
+        ("sumbreak", "sumbreak3.png"),  # circles, high resolution
         ("tango", "tango2.png"),
         ("wend", "wend2.png"),
         ("zip", "zip2.jpg"),
@@ -157,3 +159,28 @@ def test_the_page_sees_a_patch_drag_glide_for_at_least_half_a_second(browser):
     assert drags
     assert all(ms >= 450 for ms, _ in drags), "never instant"
     assert all(moves >= 10 for _, moves in drags), "the mouse glides; it doesn't jump"
+
+
+UNDO_BUTTON = """() => {
+  const button = document.createElement("button");
+  button.textContent = "Undo";
+  button.style = "position:fixed; left:100px; top:300px; width:180px; height:48px";
+  button.onclick = () => window.undone = (window.undone || 0) + 1;
+  document.body.append(button);
+}"""
+
+
+@pytest.mark.parametrize("in_iframe", [False, True])
+def test_a_button_off_the_board_is_found_on_the_page_and_clicked_on_spots_inside_it(browser, in_iframe):
+    # Sumbreak takes a merge back with its Undo button, below the board.
+    page = page_showing(browser, example("sumbreak", "sumbreak1.png"), in_iframe=in_iframe)
+    game = page.frames[-1]  # the iframe if there is one
+    game.evaluate(UNDO_BUTTON)
+    grid = GridGeometry(Lattice(0, 50, 3), Lattice(0, 50, 3))
+
+    instant_player(page, random.Random(1)).perform([Think(), Button("Undo"), Button("Undo")], grid)
+
+    assert game.evaluate("window.undone") == 2
+    presses = [(e["x"], e["y"]) for e in game.evaluate("events") if e["type"] == "pointerdown"]
+    assert len(set(presses)) == 2, "not the same spot twice"
+    assert all(100 + 18 < x < 280 - 18 and 300 + 5 < y < 348 - 5 for x, y in presses), "well inside the button"
