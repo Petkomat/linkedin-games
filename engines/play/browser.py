@@ -25,6 +25,16 @@ if TYPE_CHECKING:
 RETRY = 1.0  # s between two looks at the screen while waiting for the board
 
 
+class Clock:
+    """The time the player keeps: the machine's own clock."""
+
+    def now(self) -> float:
+        """Seconds since some fixed moment, to the microsecond; never set back."""
+        return time.perf_counter()
+
+    def sleep(self, seconds: float) -> None:
+        time.sleep(seconds)
+
 
 class Player:
     """Reads the board on `page` and enters moves with the mouse and keyboard.
@@ -33,7 +43,8 @@ class Player:
     of each thought, then a quick burst. The mouse is pressed and released on
     random spots of their cells, never exactly on the middle, and drags move
     like `hand` (see `motion`). Random draws come from `rng`. After the last
-    move, it waits for the game's result as `result_wait` says.
+    move, it waits for the game's result as `result_wait` says. Every wait is
+    timed by `clock`.
     """
 
     def __init__(
@@ -43,12 +54,14 @@ class Player:
         rng: random.Random | None = None,
         hand: Hand | None = None,
         result_wait: ResultWait | None = None,
+        clock: Clock | None = None,
     ) -> None:
         self.page = page
         self.tempo = tempo or Tempo()
         self.rng = rng or random.Random()
         self.hand = hand or Hand()
         self.result_wait = result_wait or ResultWait()
+        self.clock = clock or Clock()
 
     def screenshot(self) -> Image.Image:
         """What is on screen now, in device pixels."""
@@ -73,7 +86,8 @@ class Player:
         """`read`, once the same board has been read twice in a row (so a board
         that is still fading in isn't used); None after `seconds`. Calls
         `before_each_look`, if given, before each read."""
-        deadline = time.monotonic() + seconds
+        clock = self.clock
+        deadline = clock.now() + seconds
         previous = None
         while True:
             if before_each_look is not None:
@@ -81,27 +95,27 @@ class Player:
             board = self.read(game)
             if board is not None and previous is not None and board[0].puzzle == previous[0].puzzle:
                 return board
-            if time.monotonic() + RETRY > deadline:
+            if clock.now() + RETRY > deadline:
                 return None
             previous = board
-            time.sleep(RETRY)
+            clock.sleep(RETRY)
 
     def final_screen(self) -> Image.Image:
         """The screen to save after the last move: the finished board or the
         game's result screen. On its way from one to the other, LinkedIn may
         show an empty page for a while, so a blank screen is waited out, as
         `result_wait` says. At its limit, the last screenshot taken."""
-        wait = self.result_wait
-        deadline = time.monotonic() + wait.limit
-        time.sleep(min(wait.first_look, wait.limit))
+        wait, clock = self.result_wait, self.clock
+        deadline = clock.now() + wait.limit
+        clock.sleep(min(wait.first_look, wait.limit))
         shown = self.screenshot()
         if not looks_blank(shown):
             return shown
-        while (left := deadline - time.monotonic()) > 0:
-            time.sleep(min(wait.poll, left))
+        while (left := deadline - clock.now()) > 0:
+            clock.sleep(min(wait.poll, left))
             shown = self.screenshot()
             if not looks_blank(shown):  # it has just shown up, and may still be fading in
-                time.sleep(min(wait.settle, max(0.0, deadline - time.monotonic())))
+                clock.sleep(min(wait.settle, max(0.0, deadline - clock.now())))
                 settled = self.screenshot()
                 return shown if looks_blank(settled) else settled
         return shown
