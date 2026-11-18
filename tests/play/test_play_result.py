@@ -1,14 +1,18 @@
 """Seam: the screen the player saves after its last move.
 
 LinkedIn may show an empty page for a while on its way from the board to its
-result screen: its top bar over a flat grey page. The player waits until the
-page shows something else, the finished board or the result screen, which may
-have no grid at all. How long it waits is measured on a stand-in clock.
+result screen: its top bar over a flat grey page. Some games play an animation
+first, such as Sumbreak's tiles scattering across the page. The player waits
+until the page shows something else and holds still, the finished board or the
+result screen, which may have no grid at all. How long it waits is measured on
+a stand-in clock.
 """
 
 from __future__ import annotations
 
 import io
+import math
+import random
 
 import numpy as np
 import pytest
@@ -16,7 +20,7 @@ from PIL import Image, ImageDraw
 
 from engines.play.browser import Player
 from engines.play.games import GAMES
-from engines.play.result import ResultWait, looks_blank
+from engines.play.result import ResultWait, looks_alike, looks_blank
 from tests.helpers import example
 
 from .clock import StandInClock
@@ -47,6 +51,71 @@ def page_without_grid() -> Image.Image:
     page = Image.open(example("queens", "queens2.png")).convert("RGB")
     ImageDraw.Draw(page).rectangle(GRID, fill=CARD)
     return page
+
+
+CONFETTI = [(30, 140, 60), (40, 80, 220), (140, 60, 200), (240, 60, 120), (250, 200, 60), (250, 170, 120)]
+
+
+def with_confetti(page: Image.Image, seed: int, bits: int = 300) -> Image.Image:
+    """`page` with `bits` bits of confetti over the middle third of its width.
+    Each is 4-8 by 10-18 pixels on a 1280-pixel-wide page, as on
+    zip-result1.png, which has about half as many."""
+    page = page.copy()
+    draw, rng = ImageDraw.Draw(page), random.Random(seed)
+    size = page.width / 1280
+    for _ in range(bits):
+        x = rng.uniform(page.width / 3 - 50 * size, page.width * 2 / 3 + 50 * size)
+        y = rng.uniform(page.height * 0.1, page.height)
+        across, down = rng.uniform(4, 8) * size, rng.uniform(10, 18) * size
+        if rng.random() < 0.5:
+            across, down = down, across
+        draw.rectangle((x, y, x + across, y + down), fill=rng.choice(CONFETTI))
+    return page
+
+
+def scattered(t: float, seed: int = 1, tiles: int = 7) -> Image.Image:
+    """queens2.png with its board cut into `tiles` x `tiles` tiles that fly
+    off in all directions, turning as they go, `t` of the way out: the way
+    Sumbreak's board scatters across the page after its last move."""
+    page = page_without_grid()
+    board = Image.open(example("queens", "queens2.png")).convert("RGB").crop(GRID)
+    rng = random.Random(seed)
+    side = board.width / tiles
+    for row in range(tiles):
+        for col in range(tiles):
+            tile = board.crop((round(col * side), round(row * side), round((col + 1) * side), round((row + 1) * side)))
+            heading, reach = rng.uniform(0, 2 * math.pi), rng.uniform(0.5, 1.5) * page.width * t
+            x = GRID[0] + col * side + math.cos(heading) * reach
+            y = GRID[1] + row * side + math.sin(heading) * reach
+            turned = tile.rotate(rng.uniform(-180, 180) * t, expand=True, fillcolor=CARD)
+            page.paste(turned, (round(x), round(y)))
+    return page
+
+
+@pytest.mark.parametrize("scale", [1.0, 0.5])
+def test_a_result_screen_with_its_confetti_still_falling_looks_alike_a_second_later(scale):
+    result = Image.open(example("zip", "zip-result1.png")).convert("RGB")
+
+    assert looks_alike(scaled(with_confetti(result, seed=1), scale), scaled(with_confetti(result, seed=2), scale))
+
+
+@pytest.mark.parametrize("scale", [1.0, 0.5])
+def test_a_board_scattering_across_the_page_does_not_look_alike_a_moment_later(scale):
+    for early, late in [(0.05, 0.15), (0.1, 0.3), (0.3, 0.6)]:
+        assert not looks_alike(scaled(scattered(early), scale), scaled(scattered(late), scale)), (early, late)
+    assert not looks_alike(scaled(board(), scale), scaled(scattered(0.05), scale))
+
+
+def test_a_screen_fading_in_does_not_look_alike_once_it_is_in_but_the_last_of_a_fade_does():
+    empty = Image.new("RGB", board().size, PAGE_GREY)
+
+    assert not looks_alike(Image.blend(empty, board(), 0.5), board())
+    assert looks_alike(Image.blend(empty, board(), 0.95), board())
+
+
+def test_the_board_and_the_result_screen_do_not_look_alike():
+    assert not looks_alike(board(), page_without_grid())
+    assert not looks_alike(board(), Image.open(example("zip", "zip-result1.png")))  # nor screens of different sizes
 
 
 @pytest.mark.parametrize("scale", [1.0, 0.5])
@@ -109,6 +178,16 @@ class Frames:
         return png
 
 
+class Moving(Frames):
+    """Stands in for a page whose screenshots are `frames` over and over: an
+    animation that never ends."""
+
+    def screenshot(self) -> bytes:
+        png = self.frames[self.shots % len(self.frames)]
+        self.shots += 1
+        return png
+
+
 def png_bytes(frame: Image.Image) -> bytes:
     png = io.BytesIO()
     frame.save(png, "PNG")
@@ -123,38 +202,84 @@ def board() -> Image.Image:
     return Image.open(example("queens", "queens2.png")).convert("RGB")
 
 
-QUICK = ResultWait(first_look=0, limit=5, poll=0.01, settle=0)
+def faint_dashes() -> Image.Image:
+    """The blank page with short grey dashes on every fourth row, like faint
+    text: not blank, yet it hardly moves the average colour of any block."""
+    page = blank_page()
+    draw = ImageDraw.Draw(page)
+    for y in range(TOP_BARS, page.height, 4):
+        draw.line((page.width // 3 + 10, y, page.width // 2, y), fill=(200, 200, 200))
+    return page
 
 
-def test_blank_screens_are_waited_out_and_the_first_one_that_shows_something_is_kept():
+def final_screen(page: Frames, wait: ResultWait | None = None) -> tuple[Image.Image, float]:
+    """The player's final screen on `page`, and when it was taken on a stand-in
+    clock started at the last move. By default the player waits as it does on
+    LinkedIn: a first look 2 s after the last move, then looks 1 s apart."""
+    clock = StandInClock()
+    final = Player(page, result_wait=wait or ResultWait(), clock=clock).final_screen()
+    return final, clock.now()
+
+
+def test_a_board_that_already_holds_still_is_taken_at_the_second_look():
+    # Queens, Tango and Mini Sudoku have always shown their board 2 s after the last move.
+    page = Frames(board())
+
+    final, taken = final_screen(page)
+
+    assert taken == pytest.approx(3)
+    assert page.shots == 2
+    assert same(final, board())
+
+
+def test_blank_screens_are_waited_out_and_the_first_screen_that_holds_still_is_kept():
     page = Frames(blank_page(), blank_page(), blank_page(), board())
 
-    final = Player(page, result_wait=QUICK).final_screen()
+    final, taken = final_screen(page)
 
+    assert taken == pytest.approx(6)  # blank at 2, 3 and 4 s; the board at 5 and 6 s
     assert same(final, board())
 
 
 def test_a_page_that_stays_blank_is_waited_for_until_the_limit_and_then_taken_as_it_is():
-    page, clock = Frames(blank_page()), StandInClock()
-    wait = ResultWait(first_look=0.1, limit=0.6, poll=0.1)
+    page = Frames(blank_page())
 
-    final = Player(page, result_wait=wait, clock=clock).final_screen()
+    final, taken = final_screen(page, ResultWait(limit=6))
 
-    assert clock.now() == pytest.approx(0.6)
-    assert page.shots > 2, "it kept looking"
+    assert taken == pytest.approx(6)
+    assert page.shots == 5, "it kept looking, at 2, 3, 4, 5 and 6 s"
     assert same(final, blank_page())
 
 
-def test_a_page_that_shows_something_at_the_first_look_is_taken_at_once():
-    # Queens, Tango and Mini Sudoku have always shown their board 2 s after the last move.
-    page, clock = Frames(board()), StandInClock()
-    wait = ResultWait(first_look=0.3, limit=10, poll=0.1)
+def test_a_moving_frame_then_a_blank_page_then_the_result_saves_the_result():
+    # Sumbreak on 2026-11-18: its tiles scattered, the page went blank, and
+    # the result screen showed up 5-6 s after the last move.
+    page = Frames(scattered(0.1), blank_page(), blank_page(), page_without_grid())
 
-    final = Player(page, result_wait=wait, clock=clock).final_screen()
+    final, taken = final_screen(page)
 
-    assert clock.now() == pytest.approx(0.3)
-    assert page.shots == 1
-    assert same(final, board())
+    assert taken == pytest.approx(6)
+    assert same(final, page_without_grid())
+
+
+def test_of_two_different_moving_frames_and_a_steady_result_the_steady_one_is_saved():
+    page = Frames(scattered(0.05), scattered(0.15), page_without_grid())
+
+    final, taken = final_screen(page)
+
+    assert taken == pytest.approx(5)
+    assert same(final, page_without_grid())
+
+
+def test_a_screen_that_never_holds_still_is_taken_as_last_seen_at_the_limit():
+    frames = scattered(0.05), scattered(0.15), scattered(0.3)
+    page = Moving(*frames)
+
+    final, taken = final_screen(page, ResultWait(limit=6))
+
+    assert taken == pytest.approx(6)
+    assert page.shots == 5
+    assert same(final, frames[1]), "the fifth look"
 
 
 def test_a_screen_that_has_just_shown_up_gets_time_to_finish_fading_in():
@@ -162,24 +287,26 @@ def test_a_screen_that_has_just_shown_up_gets_time_to_finish_fading_in():
     assert not looks_blank(fading_in)
     page = Frames(blank_page(), fading_in, board())
 
-    final = Player(page, result_wait=ResultWait(first_look=0, limit=5, poll=0.01, settle=0.2)).final_screen()
+    final, taken = final_screen(page)
 
+    assert taken == pytest.approx(5)
     assert same(final, board())
 
 
-def test_a_screen_that_shows_up_and_goes_again_is_kept():
-    page = Frames(blank_page(), board(), blank_page())
+def test_a_blank_look_never_holds_still_with_the_one_before_it():
+    faint = faint_dashes()
+    assert not looks_blank(faint) and looks_alike(faint, blank_page())
+    page = Frames(faint, blank_page(), blank_page(), page_without_grid())
 
-    final = Player(page, result_wait=ResultWait(first_look=0, limit=5, poll=0.01, settle=0.1)).final_screen()
+    final, _ = final_screen(page)
 
-    assert same(final, board())
+    assert same(final, page_without_grid())
 
 
-def test_the_settling_ends_at_the_limit_too():
-    page, clock = Frames(blank_page(), board()), StandInClock()
-    wait = ResultWait(first_look=0, limit=0.3, poll=0.05, settle=5)
+def test_the_second_look_comes_at_the_limit_at_the_latest():
+    page = Frames(blank_page(), board())
 
-    final = Player(page, result_wait=wait, clock=clock).final_screen()
+    final, taken = final_screen(page, ResultWait(first_look=0, limit=0.3, poll=0.05, settle=5))
 
-    assert clock.now() == pytest.approx(0.3), "not the 5 s of settling"
+    assert taken == pytest.approx(0.3), "not the 5 s of settling"
     assert same(final, board())
