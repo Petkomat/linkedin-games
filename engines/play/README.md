@@ -156,11 +156,20 @@ days.
   event. The player reads, solves and plays that page. The recorded events
   must hit the cells of the moves worked out from the original screenshot
   file. It is skipped without the `browser` extra.
+- Timing is checked on a stand-in clock
+  ([`tests/play/clock.py`](../../tests/play/clock.py)), passed to `Player`
+  as `clock`. Its time moves only when the player waits, so a busy machine
+  can't fail these checks. `tests/play/test_play_drag.py` plays patches1.png
+  on a stand-in page. Each patch must take about half a second and glide in
+  at least 10 steps. Moves that take a while, as on a busy machine, must not
+  add up. In the browser, the page must see the glide and the drag must take
+  at least half a second. There is no upper limit, because a busy machine
+  only makes a drag longer.
 - `tests/play/test_play_result.py`: what counts as blank, on real LinkedIn
   pages, and the wait for the final screen on a stand-in page whose
-  screenshots are given one by one. `test_play_cli.py` and
-  `test_play_guest.py` play on a local page that goes blank after the last
-  move, like LinkedIn's, for both players.
+  screenshots are given one by one, timed by the stand-in clock.
+  `test_play_cli.py` and `test_play_guest.py` play on a local page that goes
+  blank after the last move, like LinkedIn's, for both players.
 
 ## Not done yet
 
