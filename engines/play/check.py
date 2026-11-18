@@ -30,7 +30,6 @@ from .report import report
 START_BUTTONS = ("Start game", "Solve now")
 START_WAIT = 10.0  # s to look for the first one
 NEXT_SCREEN_WAIT = 3.0  # s to look for another one after a click
-LOOK_AGAIN = 3.0  # s of reading the board before looking for a late start screen again
 MAX_SCREENS = 3
 BOARD_WAIT = 30.0  # s to wait for a board that reads and solves
 VIEWPORT = {"width": 1280, "height": 1600}  # tall enough for Wend's word lengths under the board
@@ -106,16 +105,18 @@ def start_and_read(
     """Click through the start screens on `page`, then wait for a board that
     reads and solves, as Player.wait_for_board; None after `board_wait` s.
 
-    A slow page may show its start screen only later, so while waiting for
-    the board it keeps clicking any start screen that turns up."""
+    A slow page may show its start screen only later, so before each look at
+    the board it clicks any start screen that has turned up. It doesn't wait
+    for another one after that click: the next look will find it."""
     deadline = time.monotonic() + board_wait
     click_start_screens(page, start_wait)
-    while True:
-        page.mouse.move(0, 0)  # a pointer resting over a cell highlights it
-        board = player.wait_for_board(game, min(LOOK_AGAIN, max(0.0, deadline - time.monotonic())))
-        if board is not None or time.monotonic() >= deadline:
-            return board
-        click_start_screens(page, 0)
+    page.mouse.move(0, 0)  # a pointer resting over a cell highlights it
+
+    def click_late_start_screen() -> None:
+        if _click_start_button(page, 0):
+            page.mouse.move(0, 0)
+
+    return player.wait_for_board(game, max(0.0, deadline - time.monotonic()), click_late_start_screen)
 
 
 def _describe(page: Page) -> str:

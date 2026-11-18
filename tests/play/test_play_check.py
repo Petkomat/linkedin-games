@@ -42,6 +42,14 @@ def test_a_start_screen_that_shows_up_late_is_still_clicked_away(browser, tmp_pa
     assert check_game(page, GAMES["queens"], tmp_path, start_wait=1, board_wait=8)
 
 
+def test_the_board_is_read_as_soon_as_a_late_start_screen_is_gone(browser, tmp_path):
+    # A screen halfway through the wait leaves 4 s, plenty to read the board
+    # twice, as long as no time goes on looking for more start screens.
+    page = page_showing(browser, example("queens", "queens1.png"), behind_start_screen=True, screens_after_ms=4000)
+
+    assert check_game(page, GAMES["queens"], tmp_path, start_wait=1, board_wait=8)
+
+
 def test_a_start_screen_inside_an_iframe_is_clicked_away(browser, tmp_path):
     # LinkedIn runs Mini Sudoku, intro included, in an iframe.
     page = page_showing(
