@@ -100,21 +100,54 @@ sits in an iframe.
 
 On its way from the finished board to its result screen, LinkedIn may show
 only its top bar over an empty grey page for a while. Zip and Wend nearly
-always did for more than 2 s, so a fixed wait saved a blank screen. Instead,
-[`Player.final_screen`](browser.py) waits until the page isn't blank, and both
-`python -m engines.play` and `guest play` save what it returns:
+always did for more than 2 s, so a fixed wait saved a blank screen. Some games
+play an animation first: after Sumbreak's last move, its board's tiles
+scatter and tumble across the page for about 2 s, then the page goes blank,
+and the result screen shows up 5-6 s after the last move. Saving the first
+screen that wasn't blank once saved a frame of that scatter. So
+[`Player.final_screen`](browser.py) waits until the page isn't blank and holds
+still, for every game. Both `python -m engines.play` and `guest play` save
+what it returns:
 
 - It first looks 2 s after the last move, which gives the game time to take
-  it. Queens, Tango and Mini Sudoku show their board then, and it is saved
-  straight away.
-- While the page is blank, it looks again every second. A screen that shows
-  up after a blank one gets one more second to finish fading in.
+  it.
+- While the page is blank, it looks again every second.
+- When a look shows something, it looks again a second later. If the two
+  looks are alike and neither is blank, the screen holds still, and the
+  second look is saved. If not, the waiting goes on from the newer look.
+  Queens, Tango and Mini Sudoku show their board 2 s after the last move, so
+  it is saved at 3 s, one look later than when the first screen that wasn't
+  blank was saved straight away.
 - 20 s after the last move, it stops waiting and saves the last screenshot,
-  blank or not. The game was finished, so the play still counts as done;
-  `engines.play` says that the page looked blank.
+  blank, moving or not. The game was finished, so the play still counts as
+  done; `engines.play` says if the page looked blank.
 
-The times are in `ResultWait` ([`result.py`](result.py)), and `looks_blank`
-there decides what is blank. It looks below the top tenth of the screen
+The times are in `ResultWait` ([`result.py`](result.py)). `looks_alike` there
+decides when two looks are alike. It compares the same part of the screen as
+`looks_blank` (below), cut into square blocks, 8 across, by each block's
+average colour. A block has moved if its average moves by more than 24 levels
+of 255 in any colour, and two looks are alike if fewer than 1 block in 20
+moved. A bit of confetti hardly moves the average of its block, so Zip's
+result screen with its confetti still falling (`examples/zip/zip-result1.png`)
+holds still. Neither do the last few levels of a fade. Tiles flying across the
+page or a screen fading in move far more blocks. Measured on frames drawn as
+in the tests, the same at full and half resolution:
+
+| Two looks | Blocks moved |
+|---|---|
+| zip-result1.png with 300 bits of confetti (twice as many as it has), in other places | 1% |
+| the same with 500 bits | 2-3% |
+| queens2.png's board in 49 tiles flying out and turning, early on | 49-58% |
+| the same, while most tiles leave the middle third | 14-23% |
+| a screen half faded in, and fully | 48% |
+| a screen 95% faded in, and fully | 0% |
+
+There is no frame of Sumbreak's real scatter to measure. Once nearly all
+tiles have left the middle third, two looks can be alike (3% on one drawn
+case). Such a frame is saved only if two looks a second apart both land after
+the tiles have nearly gone and before the page goes blank.
+
+`looks_blank` decides what is blank. It looks below the top tenth of the screen
 (LinkedIn's bar and the game's bar) and only at the middle third of its width,
 where LinkedIn puts its games; LinkedIn's messaging box in the bottom right
 corner doesn't count. A row in there shows something if its colours differ
@@ -166,8 +199,12 @@ days.
   at least half a second. There is no upper limit, because a busy machine
   only makes a drag longer.
 - `tests/play/test_play_result.py`: what counts as blank, on real LinkedIn
-  pages, and the wait for the final screen on a stand-in page whose
-  screenshots are given one by one, timed by the stand-in clock.
+  pages, and when two looks are alike, on real pages with drawn confetti, a
+  drawn scatter of a board's tiles and fades. Then the wait for the final
+  screen on a stand-in page whose screenshots are given one by one, timed by
+  the stand-in clock: a scatter frame, a blank page and then the result; two
+  different moving frames and then the result; a screen that never holds
+  still; a board that holds still from the first look.
   `test_play_cli.py` and `test_play_guest.py` play on a local page that goes
   blank after the last move, like LinkedIn's, for both players.
 
