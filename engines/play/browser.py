@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 from PIL import Image
 
 from ..common import Cell
-from ..common.actions import Action, Click, Drag
+from ..common.actions import Action, Button, Click, Drag
 from ..vision import GridGeometry
 from .games import Game
 from .motion import Hand, drag, spot
@@ -143,8 +143,29 @@ class Player:
                     mouse.click(x, y)
             elif isinstance(action, Drag):
                 self._drag(screen, action.cells)
+            elif isinstance(action, Button):
+                self._click_button(action.label)
             else:
                 self.page.keyboard.press(action.key)
+
+    def _click_button(self, label: str) -> None:
+        """Click a random spot well inside the visible button that says `label`.
+
+        A button off the board isn't in the scan, so it is looked up on the
+        page, in whichever frame it is, like the start screens' buttons."""
+        from playwright.sync_api import Error as PlaywrightError  # the browser extra, only needed here
+
+        for frame in self.page.frames:
+            button = frame.get_by_role("button", name=label, exact=True).filter(visible=True)
+            try:
+                box = button.first.bounding_box() if button.count() else None
+            except PlaywrightError:  # tracking and captcha iframes come and go
+                continue
+            if box:  # in page pixels, wherever the frame is
+                d_row, d_col = spot(self.rng)
+                self.page.mouse.click(box["x"] + box["width"] * (0.5 + d_col), box["y"] + box["height"] * (0.5 + d_row))
+                return
+        raise RuntimeError(f"no {label} button on the page")
 
     def _drag(self, screen: Screen, cells: tuple[Cell, ...]) -> None:
         """Press, move along the hand's timeline as the clock runs, release."""

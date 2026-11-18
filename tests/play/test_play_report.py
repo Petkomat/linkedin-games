@@ -5,6 +5,7 @@ from datetime import datetime
 from engines.play.games import GAMES
 from engines.play.report import report
 from engines.sudoku import Puzzle as SudokuPuzzle
+from engines.sumbreak import Puzzle as SumbreakPuzzle
 from engines.zip import Puzzle as ZipPuzzle
 from tests.sudoku.boards import SUDOKU1
 
@@ -42,6 +43,22 @@ def test_a_zip_is_saved_as_the_order_in_which_the_path_visits_the_cells():
 ```
 
 The order in which the path visits each cell; 1 is the start.
+"""
+
+
+def test_a_sumbreak_is_saved_as_when_and_where_each_tile_is_dragged():
+    # 1 + 1 = 2 to the right, 2 + 2 = 4 up, 4 + 4 = 8 to the right, 8 + 8 = 16 down
+    puzzle = SumbreakPuzzle(((1, 1, 4), (None, 2, 8)))
+
+    assert report(GAMES["sumbreak"], puzzle, STARTED) == """\
+# Sumbreak, 2026-11-10 14:03:07
+
+```
+1> 3> 4v
+ . 2^  *
+```
+
+Each tile is dragged onto the neighbour its arrow points to, in the merge with its number (1 is the first). * is the tile left at the end, . an empty cell.
 """
 
 
