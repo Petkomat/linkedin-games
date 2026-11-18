@@ -29,14 +29,14 @@ from engines.play.check import START_WAIT, VIEWPORT, check_all, click_start_scre
 from engines.play.games import GAMES
 
 from .github import GhGitHub, gh
-from .scout import HUB, HubGame, hub_games, scout
+from .scout import HUB, HubGame, how_to_play, hub_games, scout, wait_for_rules
 from .watcher import incident, watch
 
 SETTLE = 5.0  # s for a new game's board to show after its start screens
-RULES_WAIT = 15.0  # s to look for the ? button
+RULES_WAIT = 15.0  # s to look for the ? button, and then for the rules in its dialog
 RULES = ("[aria-label='Tutorial']", "button:has-text('How to play')")  # LinkedIn's "?" button
 DIALOGS = ("[role=dialog]", "dialog", ".artdeco-modal")
-SCREEN_READER = {"Dialog content start.", "Dialog content end."}  # lines LinkedIn adds for screen readers
+READ_WAIT = 1000  # ms for one read of the dialog's text, should the dialog go away
 
 
 def built_slugs() -> set[str]:
@@ -59,18 +59,15 @@ def describe(browser: Browser, out: Path) -> Callable[[HubGame], str]:
             page.screenshot(path=str(out / f"{game.slug}.png"), full_page=True)
         finally:
             page.close()
-        if not rules:
-            return "The Scout couldn't read the rules. Open the game as a guest and click its ? button."
-        lines = [line for line in rules.splitlines() if line.strip() not in SCREEN_READER]
-        quoted = "\n".join(f"> {line}" if line.strip() else ">" for line in lines)
-        return f"## How to play, as LinkedIn shows a guest\n\n{quoted}"
+        return how_to_play(rules)
 
     return look
 
 
 def _rules(page: Page, seconds: float = RULES_WAIT) -> str:
     """Click the game's ? button, in whichever frame it shows up within
-    `seconds`, and read the dialog it opens."""
+    `seconds`, and read the dialog it opens once its rules have loaded, for
+    up to `seconds` more (see `wait_for_rules`). "" if there was no button."""
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         for frame in page.frames:  # some games run in an iframe that loads late
@@ -80,9 +77,10 @@ def _rules(page: Page, seconds: float = RULES_WAIT) -> str:
                     if not button.count():
                         continue
                     button.first.click()
-                    text = frame.locator(", ".join(DIALOGS)).filter(visible=True)
-                    text.first.wait_for(timeout=5000)
-                    return text.first.inner_text().strip()
+                    dialog = frame.locator(", ".join(DIALOGS)).filter(visible=True).first
+                    dialog.wait_for(timeout=5000)
+                    return wait_for_rules(lambda: dialog.inner_text(timeout=READ_WAIT), seconds,
+                                          sleep=lambda s: page.wait_for_timeout(s * 1000))  # fmt: skip
                 except PlaywrightError:  # frames come and go
                     continue
         page.wait_for_timeout(500)
