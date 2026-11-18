@@ -1,14 +1,18 @@
 """Seam: the screen the player saves after its last move.
 
 LinkedIn may show an empty page for a while on its way from the board to its
-result screen: its top bar over a flat grey page. The player waits until the
-page shows something else, the finished board or the result screen, which may
-have no grid at all. How long it waits is measured on a stand-in clock.
+result screen: its top bar over a flat grey page. Some games play an animation
+first, such as Sumbreak's tiles scattering across the page. The player waits
+until the page shows something else and holds still, the finished board or the
+result screen, which may have no grid at all. How long it waits is measured on
+a stand-in clock.
 """
 
 from __future__ import annotations
 
 import io
+import math
+import random
 
 import numpy as np
 import pytest
@@ -16,7 +20,7 @@ from PIL import Image, ImageDraw
 
 from engines.play.browser import Player
 from engines.play.games import GAMES
-from engines.play.result import ResultWait, looks_blank
+from engines.play.result import ResultWait, looks_alike, looks_blank
 from tests.helpers import example
 
 from .clock import StandInClock
@@ -47,6 +51,71 @@ def page_without_grid() -> Image.Image:
     page = Image.open(example("queens", "queens2.png")).convert("RGB")
     ImageDraw.Draw(page).rectangle(GRID, fill=CARD)
     return page
+
+
+CONFETTI = [(30, 140, 60), (40, 80, 220), (140, 60, 200), (240, 60, 120), (250, 200, 60), (250, 170, 120)]
+
+
+def with_confetti(page: Image.Image, seed: int, bits: int = 300) -> Image.Image:
+    """`page` with `bits` bits of confetti over the middle third of its width.
+    Each is 4-8 by 10-18 pixels on a 1280-pixel-wide page, as on
+    zip-result1.png, which has about half as many."""
+    page = page.copy()
+    draw, rng = ImageDraw.Draw(page), random.Random(seed)
+    size = page.width / 1280
+    for _ in range(bits):
+        x = rng.uniform(page.width / 3 - 50 * size, page.width * 2 / 3 + 50 * size)
+        y = rng.uniform(page.height * 0.1, page.height)
+        across, down = rng.uniform(4, 8) * size, rng.uniform(10, 18) * size
+        if rng.random() < 0.5:
+            across, down = down, across
+        draw.rectangle((x, y, x + across, y + down), fill=rng.choice(CONFETTI))
+    return page
+
+
+def scattered(t: float, seed: int = 1, tiles: int = 7) -> Image.Image:
+    """queens2.png with its board cut into `tiles` x `tiles` tiles that fly
+    off in all directions, turning as they go, `t` of the way out: the way
+    Sumbreak's board scatters across the page after its last move."""
+    page = page_without_grid()
+    board = Image.open(example("queens", "queens2.png")).convert("RGB").crop(GRID)
+    rng = random.Random(seed)
+    side = board.width / tiles
+    for row in range(tiles):
+        for col in range(tiles):
+            tile = board.crop((round(col * side), round(row * side), round((col + 1) * side), round((row + 1) * side)))
+            heading, reach = rng.uniform(0, 2 * math.pi), rng.uniform(0.5, 1.5) * page.width * t
+            x = GRID[0] + col * side + math.cos(heading) * reach
+            y = GRID[1] + row * side + math.sin(heading) * reach
+            turned = tile.rotate(rng.uniform(-180, 180) * t, expand=True, fillcolor=CARD)
+            page.paste(turned, (round(x), round(y)))
+    return page
+
+
+@pytest.mark.parametrize("scale", [1.0, 0.5])
+def test_a_result_screen_with_its_confetti_still_falling_looks_alike_a_second_later(scale):
+    result = Image.open(example("zip", "zip-result1.png")).convert("RGB")
+
+    assert looks_alike(scaled(with_confetti(result, seed=1), scale), scaled(with_confetti(result, seed=2), scale))
+
+
+@pytest.mark.parametrize("scale", [1.0, 0.5])
+def test_a_board_scattering_across_the_page_does_not_look_alike_a_moment_later(scale):
+    for early, late in [(0.05, 0.15), (0.1, 0.3), (0.3, 0.6)]:
+        assert not looks_alike(scaled(scattered(early), scale), scaled(scattered(late), scale)), (early, late)
+    assert not looks_alike(scaled(board(), scale), scaled(scattered(0.05), scale))
+
+
+def test_a_screen_fading_in_does_not_look_alike_once_it_is_in_but_the_last_of_a_fade_does():
+    empty = Image.new("RGB", board().size, PAGE_GREY)
+
+    assert not looks_alike(Image.blend(empty, board(), 0.5), board())
+    assert looks_alike(Image.blend(empty, board(), 0.95), board())
+
+
+def test_the_board_and_the_result_screen_do_not_look_alike():
+    assert not looks_alike(board(), page_without_grid())
+    assert not looks_alike(board(), Image.open(example("zip", "zip-result1.png")))  # nor screens of different sizes
 
 
 @pytest.mark.parametrize("scale", [1.0, 0.5])
