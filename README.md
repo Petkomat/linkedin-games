@@ -4,7 +4,7 @@
 
 Solvers for the LinkedIn daily games: screenshot in, solved screenshot out,
 or play today's game in Chrome. Covered so far: Patches, Queens, Mini Sudoku,
-Tango, Wend and Zip, the logic games, which rules and search solve from the
+Sumbreak, Tango, Wend and Zip, the logic games, which rules and search solve from the
 screen alone. The knowledge games, such as Pinpoint and Crossclimb, need world
 knowledge and are out of scope.
 
@@ -22,13 +22,14 @@ uv run --extra browser python -m engines.play <game>
 ```
 engines/
   common/     plumbing shared by every game: command line, bit sets, text boards, Cell/Edge,
-              solver traces and the actions (click, drag, key) moves are made of
+              solver traces and the actions (click, drag, key, button) moves are made of
   vision/     image processing shared by every game: loading, grid finding,
               binary morphology, digit and letter reading
   play/       plays a game in Chrome with Playwright: screenshot, solve, mouse
   patches/    model.py, solver.py, ocr.py, moves.py, render.py, __main__.py; one folder per game
   queens/
   sudoku/
+  sumbreak/
   tango/
   wend/       plus enable1.txt, the English word list
   zip/        no render or command line yet; played with engines.play

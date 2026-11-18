@@ -5,7 +5,7 @@ keyboard. No LLM is involved anywhere.
 
 ```
 uv sync --extra browser
-uv run --extra browser python -m engines.play queens     # or tango, sudoku, patches, wend, zip
+uv run --extra browser python -m engines.play queens     # or tango, sudoku, patches, sumbreak, wend, zip
 ```
 
 1. Chrome opens with its own profile (default `~/.linkedin-games/chrome-profile`).
@@ -51,6 +51,7 @@ into input:
 | Tango | a sun or a moon | one or two clicks (empty → sun → moon) | two or one clicks (→ empty) |
 | Mini Sudoku | a digit (givens skipped) | click the cell, type the digit | click the cell, Backspace |
 | Patches | a patch | drag from corner to corner | click the patch |
+| Sumbreak | a merge | drag the tile onto its neighbour | click Undo (takes back the last merge) |
 | Wend | a word | drag from its first letter to its last | click its first letter (not once it has a ✓) |
 | Zip | the next cell of the path | one held drag from 1, onto the cell | drag back onto the cell before |
 
@@ -71,6 +72,14 @@ into input:
   propagation rejects at once is never drawn, the way a player wouldn't try a
   move that obviously fails. Dead ends found further on are drawn and then
   taken back.
+- **Sumbreak:** a merge can't be taken apart on the board, only with the
+  game's Undo button, which isn't on the board. So the moves name the
+  button (`Button("Undo")` in [`actions.py`](../common/actions.py)), and the
+  player looks it up on the page by its text and clicks a random spot well
+  inside it. On a big board the solver may take back dozens of merges, so
+  only the first 5 that fail are made; a person would think harder instead.
+  Its controls were tried as a guest before it was built: see
+  [its README](../sumbreak/README.md).
 
 On the example screenshots, most solvers deduce everything without a wrong
 guess. The tests use harder boards to check that failed guesses are entered
@@ -94,7 +103,10 @@ page's `devicePixelRatio`, because Playwright screenshots in device pixels
 but moves the mouse in page pixels. The screenshot is of the window only
 (not the full page), so the board must be visible in the window. The board
 isn't looked up in the page's HTML at all, so it doesn't matter if the game
-sits in an iframe.
+sits in an iframe. Only a button off the board, such as Sumbreak's Undo, is
+found by its text, in whichever frame it is, like the start screens'
+buttons. It too must be visible in the window: scrolling to it would move
+the board.
 
 ## The final screen
 
