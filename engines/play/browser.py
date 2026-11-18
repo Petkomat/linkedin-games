@@ -15,7 +15,7 @@ from ..common.actions import Action, Click, Drag
 from ..vision import GridGeometry
 from .games import Game
 from .motion import Hand, drag, spot
-from .result import ResultWait, looks_blank
+from .result import ResultWait, looks_alike, looks_blank
 from .screen import Screen
 from .timing import Tempo
 
@@ -102,22 +102,23 @@ class Player:
 
     def final_screen(self) -> Image.Image:
         """The screen to save after the last move: the finished board or the
-        game's result screen. On its way from one to the other, LinkedIn may
-        show an empty page for a while, so a blank screen is waited out, as
+        game's result screen, once it holds still. On its way from one to the
+        other, LinkedIn may play an animation and show an empty page for a
+        while, so a screen counts only once it isn't blank and the next look
+        is alike (see `looks_blank` and `looks_alike`). Looks are timed as
         `result_wait` says. At its limit, the last screenshot taken."""
         wait, clock = self.result_wait, self.clock
         deadline = clock.now() + wait.limit
         clock.sleep(min(wait.first_look, wait.limit))
         shown = self.screenshot()
-        if not looks_blank(shown):
-            return shown
+        blank = looks_blank(shown)
         while (left := deadline - clock.now()) > 0:
-            clock.sleep(min(wait.poll, left))
-            shown = self.screenshot()
-            if not looks_blank(shown):  # it has just shown up, and may still be fading in
-                clock.sleep(min(wait.settle, max(0.0, deadline - clock.now())))
-                settled = self.screenshot()
-                return shown if looks_blank(settled) else settled
+            clock.sleep(min(wait.poll if blank else wait.settle, left))
+            seen = self.screenshot()
+            seen_blank = looks_blank(seen)
+            if not blank and not seen_blank and looks_alike(shown, seen):
+                return seen
+            shown, blank = seen, seen_blank
         return shown
 
     def read(self, game: Game) -> tuple[Any, list[Action]] | None:

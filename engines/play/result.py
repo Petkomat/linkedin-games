@@ -24,8 +24,10 @@ class ResultWait:
 
     It first looks `first_look` s after the last move, which gives the game
     time to take it. While the page is blank (see `looks_blank`), it looks
-    again every `poll` s, until `limit` s after the last move. A screen that
-    shows up after a blank one gets `settle` s more to finish fading in.
+    again every `poll` s. A look that shows something is checked `settle` s
+    later: if that look is alike (see `looks_alike`) and isn't blank, the
+    screen holds still and is saved; if not, the waiting goes on from there.
+    It ends `limit` s after the last move at the latest.
     """
 
     first_look: float = 2.0

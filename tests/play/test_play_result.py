@@ -178,6 +178,16 @@ class Frames:
         return png
 
 
+class Moving(Frames):
+    """Stands in for a page whose screenshots are `frames` over and over: an
+    animation that never ends."""
+
+    def screenshot(self) -> bytes:
+        png = self.frames[self.shots % len(self.frames)]
+        self.shots += 1
+        return png
+
+
 def png_bytes(frame: Image.Image) -> bytes:
     png = io.BytesIO()
     frame.save(png, "PNG")
@@ -192,38 +202,84 @@ def board() -> Image.Image:
     return Image.open(example("queens", "queens2.png")).convert("RGB")
 
 
-QUICK = ResultWait(first_look=0, limit=5, poll=0.01, settle=0)
+def faint_dashes() -> Image.Image:
+    """The blank page with short grey dashes on every fourth row, like faint
+    text: not blank, yet it hardly moves the average colour of any block."""
+    page = blank_page()
+    draw = ImageDraw.Draw(page)
+    for y in range(TOP_BARS, page.height, 4):
+        draw.line((page.width // 3 + 10, y, page.width // 2, y), fill=(200, 200, 200))
+    return page
 
 
-def test_blank_screens_are_waited_out_and_the_first_one_that_shows_something_is_kept():
+def final_screen(page: Frames, wait: ResultWait | None = None) -> tuple[Image.Image, float]:
+    """The player's final screen on `page`, and when it was taken on a stand-in
+    clock started at the last move. By default the player waits as it does on
+    LinkedIn: a first look 2 s after the last move, then looks 1 s apart."""
+    clock = StandInClock()
+    final = Player(page, result_wait=wait or ResultWait(), clock=clock).final_screen()
+    return final, clock.now()
+
+
+def test_a_board_that_already_holds_still_is_taken_at_the_second_look():
+    # Queens, Tango and Mini Sudoku have always shown their board 2 s after the last move.
+    page = Frames(board())
+
+    final, taken = final_screen(page)
+
+    assert taken == pytest.approx(3)
+    assert page.shots == 2
+    assert same(final, board())
+
+
+def test_blank_screens_are_waited_out_and_the_first_screen_that_holds_still_is_kept():
     page = Frames(blank_page(), blank_page(), blank_page(), board())
 
-    final = Player(page, result_wait=QUICK).final_screen()
+    final, taken = final_screen(page)
 
+    assert taken == pytest.approx(6)  # blank at 2, 3 and 4 s; the board at 5 and 6 s
     assert same(final, board())
 
 
 def test_a_page_that_stays_blank_is_waited_for_until_the_limit_and_then_taken_as_it_is():
-    page, clock = Frames(blank_page()), StandInClock()
-    wait = ResultWait(first_look=0.1, limit=0.6, poll=0.1)
+    page = Frames(blank_page())
 
-    final = Player(page, result_wait=wait, clock=clock).final_screen()
+    final, taken = final_screen(page, ResultWait(limit=6))
 
-    assert clock.now() == pytest.approx(0.6)
-    assert page.shots > 2, "it kept looking"
+    assert taken == pytest.approx(6)
+    assert page.shots == 5, "it kept looking, at 2, 3, 4, 5 and 6 s"
     assert same(final, blank_page())
 
 
-def test_a_page_that_shows_something_at_the_first_look_is_taken_at_once():
-    # Queens, Tango and Mini Sudoku have always shown their board 2 s after the last move.
-    page, clock = Frames(board()), StandInClock()
-    wait = ResultWait(first_look=0.3, limit=10, poll=0.1)
+def test_a_moving_frame_then_a_blank_page_then_the_result_saves_the_result():
+    # Sumbreak on 2026-11-18: its tiles scattered, the page went blank, and
+    # the result screen showed up 5-6 s after the last move.
+    page = Frames(scattered(0.1), blank_page(), blank_page(), page_without_grid())
 
-    final = Player(page, result_wait=wait, clock=clock).final_screen()
+    final, taken = final_screen(page)
 
-    assert clock.now() == pytest.approx(0.3)
-    assert page.shots == 1
-    assert same(final, board())
+    assert taken == pytest.approx(6)
+    assert same(final, page_without_grid())
+
+
+def test_of_two_different_moving_frames_and_a_steady_result_the_steady_one_is_saved():
+    page = Frames(scattered(0.05), scattered(0.15), page_without_grid())
+
+    final, taken = final_screen(page)
+
+    assert taken == pytest.approx(5)
+    assert same(final, page_without_grid())
+
+
+def test_a_screen_that_never_holds_still_is_taken_as_last_seen_at_the_limit():
+    frames = scattered(0.05), scattered(0.15), scattered(0.3)
+    page = Moving(*frames)
+
+    final, taken = final_screen(page, ResultWait(limit=6))
+
+    assert taken == pytest.approx(6)
+    assert page.shots == 5
+    assert same(final, frames[1]), "the fifth look"
 
 
 def test_a_screen_that_has_just_shown_up_gets_time_to_finish_fading_in():
@@ -231,24 +287,26 @@ def test_a_screen_that_has_just_shown_up_gets_time_to_finish_fading_in():
     assert not looks_blank(fading_in)
     page = Frames(blank_page(), fading_in, board())
 
-    final = Player(page, result_wait=ResultWait(first_look=0, limit=5, poll=0.01, settle=0.2)).final_screen()
+    final, taken = final_screen(page)
 
+    assert taken == pytest.approx(5)
     assert same(final, board())
 
 
-def test_a_screen_that_shows_up_and_goes_again_is_kept():
-    page = Frames(blank_page(), board(), blank_page())
+def test_a_blank_look_never_holds_still_with_the_one_before_it():
+    faint = faint_dashes()
+    assert not looks_blank(faint) and looks_alike(faint, blank_page())
+    page = Frames(faint, blank_page(), blank_page(), page_without_grid())
 
-    final = Player(page, result_wait=ResultWait(first_look=0, limit=5, poll=0.01, settle=0.1)).final_screen()
+    final, _ = final_screen(page)
 
-    assert same(final, board())
+    assert same(final, page_without_grid())
 
 
-def test_the_settling_ends_at_the_limit_too():
-    page, clock = Frames(blank_page(), board()), StandInClock()
-    wait = ResultWait(first_look=0, limit=0.3, poll=0.05, settle=5)
+def test_the_second_look_comes_at_the_limit_at_the_latest():
+    page = Frames(blank_page(), board())
 
-    final = Player(page, result_wait=wait, clock=clock).final_screen()
+    final, taken = final_screen(page, ResultWait(first_look=0, limit=0.3, poll=0.05, settle=5))
 
-    assert clock.now() == pytest.approx(0.3), "not the 5 s of settling"
+    assert taken == pytest.approx(0.3), "not the 5 s of settling"
     assert same(final, board())
