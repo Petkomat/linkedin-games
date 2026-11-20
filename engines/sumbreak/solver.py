@@ -150,9 +150,10 @@ def _uneven(tiles: Tiles) -> bool:
 
     Until they reach 2t, such tiles can only merge with each other (the
     others are bigger), and they can't stay below it, so each group's sum
-    must be made of 2t tiles. A x2 tile in the group could double one of
-    them instead, so such a group is let be. Every number is the smallest
-    doubled, which `solve` checks first."""
+    must be made of 2t tiles. Every number is the smallest doubled, which
+    `solve` checks first. A x2 tile could double one of them instead, so a
+    group with one is let be: x2 tiles count as low for every t, which joins
+    the groups they touch."""
     numbers = _numbers(tiles)
     smallest, largest = min(numbers), max(numbers)
     t = 2 * smallest  # for t = smallest, `_unpaired` asks more
