@@ -9,7 +9,7 @@ from pathlib import Path
 
 from team.agents import command, outcome
 from team.model import Failed, Job, UsageLimited, Verdict
-from team.roles import BY_NAME, DEVELOPER, PROJECT_MANAGER, REVIEWER
+from team.roles import BY_NAME, DEVELOPER, OPERATOR, PROJECT_MANAGER, REVIEWER
 
 STREAMS = Path(__file__).parent / "streams"
 
@@ -54,8 +54,32 @@ def test_nothing_outside_a_role_s_list_is_allowed_and_nothing_asks():
 
     assert option(argv, "--permission-mode") == "dontAsk"
     assert "--dangerously-skip-permissions" not in argv
-    assert {"Edit", "Write", "Bash(uv run *)", "Bash(git push *)"} <= set(allowed(argv))
+    assert {"Edit", "Write", "Bash(uv run *)", "Bash(git commit *)"} <= set(allowed(argv))
     assert "Bash" not in allowed(argv)
+
+
+def test_the_developer_may_push_its_branch_but_never_force_it():
+    # A force push would replace the commits the Reviewer saw, and nobody would notice (#26).
+    rules = allowed(command(job(), DEVELOPER))
+
+    for line in ("git push -u origin HEAD", "git push origin HEAD"):
+        assert permits(rules, line), line
+    for line in (
+        "git push --force", "git push -f", "git push -fu origin HEAD", "git push -uf origin HEAD",
+        "git push --force origin HEAD", "git push origin HEAD --force", "git push -u origin HEAD -f",
+        "git push --force-with-lease origin HEAD", "git push --force-if-includes origin HEAD",
+        "git push origin +HEAD", "git push -u origin +HEAD:team/7-new-game-sumbreak",
+        "git push --mirror", "git push --delete origin team/7-new-game-sumbreak",
+        "git push origin :team/7-new-game-sumbreak", "git push origin HEAD:main",
+    ):
+        assert not permits(rules, line), line
+
+
+def test_the_operator_may_still_force_push_with_a_lease_after_a_rebase():
+    rules = allowed(command(job("operator"), OPERATOR))
+
+    for line in ("git push --force-with-lease origin HEAD", "git push -u origin HEAD", "git rebase origin/main"):
+        assert permits(rules, line), line
 
 
 def test_the_developer_may_bring_main_into_its_branch_to_resolve_conflicts():
