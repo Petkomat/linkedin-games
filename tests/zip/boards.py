@@ -52,3 +52,26 @@ ZIP2_ANSWER = [
     (3, 4), (3, 3), (4, 3), (5, 3), (5, 2), (5, 1), (4, 1),
     (4, 2), (3, 2), (3, 1), (3, 0), (4, 0), (5, 0),
 ]  # fmt: skip
+
+# Typed in from examples/zip/zip3.png, the daily board of 2026-11-20 seen by
+# a guest: 7x7, with two-digit numbers.
+ZIP3 = Puzzle(
+    rows=7,
+    cols=7,
+    numbers={
+        (1, 5): 1, (1, 4): 2, (1, 2): 3, (2, 3): 4, (3, 3): 5, (5, 1): 6,
+        (5, 2): 7, (4, 3): 8, (5, 4): 9, (1, 1): 10, (5, 5): 11,
+    },
+    walls=frozenset({
+        frozenset({(0, 1), (1, 1)}),
+        frozenset({(0, 3), (1, 3)}),
+        frozenset({(0, 5), (1, 5)}),
+        frozenset({(2, 2), (3, 2)}),
+        frozenset({(2, 4), (3, 4)}),
+        frozenset({(3, 2), (4, 2)}),
+        frozenset({(3, 4), (4, 4)}),
+        frozenset({(5, 1), (6, 1)}),
+        frozenset({(5, 3), (6, 3)}),
+        frozenset({(5, 5), (6, 5)}),
+    }),
+)  # fmt: skip
