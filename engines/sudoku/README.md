@@ -33,4 +33,5 @@ row-by-row backtracking and takes 2 ms here. The others take at most about
 2. **Givens:** in each cell (inset past the thick borders), ink is darkness
    relative to the cell's median, so highlighted cells still work.
 3. **Digits:** the shared HOG + hole-count reader, matched against Pillow's
-   bundled font.
+   bundled font. Ink that matches no digit well enough, such as a +, is
+   refused, and so is the board; it is not taken for an empty cell.
