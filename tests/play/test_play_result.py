@@ -296,15 +296,37 @@ def test_sumbreaks_fallen_tiles_are_not_saved_however_long_they_lie_still():
     assert taken == pytest.approx(9), "the result showed at 8 s and held still at 9 s"
 
 
-def test_a_board_that_already_holds_still_is_taken_at_the_second_look():
-    # Queens, Tango and Mini Sudoku have always shown their board 2 s after the last move.
+@pytest.mark.parametrize("game", ["patches", "queens", "sudoku", "tango", "wend", "zip"])
+def test_a_board_that_already_holds_still_is_taken_at_the_second_look(game):
+    # Queens, Tango and Mini Sudoku have always shown their board 2 s after
+    # the last move. Only Sumbreak waits for a blank page.
     page = Frames(board())
 
-    final, taken = final_screen(page)
+    final, taken = final_screen(page, game=game)
 
     assert taken == pytest.approx(3)
     assert page.shots == 2
     assert same(final, board())
+
+
+def test_sumbreaks_result_screen_shown_straight_after_its_fallen_tiles_is_saved_at_the_limit():
+    # Were LinkedIn to drop the blank page, or show it only between two looks
+    page = Frames(lone_tile(), fallen_tiles(), fallen_tiles(), sumbreak_result())
+
+    final, taken = final_screen(page, ResultWait(limit=8), game="sumbreak")
+
+    assert taken == pytest.approx(8)
+    assert page.shots == 7, "it kept looking, at 2, 3, ... 8 s"
+    assert same(final, sumbreak_result())
+
+
+def test_sumbreaks_screen_counts_straight_away_once_the_first_look_is_blank():
+    page = Frames(logo_page(), sumbreak_result())
+
+    final, taken = final_screen(page, game="sumbreak")
+
+    assert taken == pytest.approx(4)
+    assert same(final, sumbreak_result())
 
 
 def test_blank_screens_are_waited_out_and_the_first_screen_that_holds_still_is_kept():
@@ -331,7 +353,7 @@ def test_a_moving_frame_then_a_blank_page_then_the_result_saves_the_result():
     # the result screen showed up 5-6 s after the last move.
     page = Frames(scattered(0.1), blank_page(), blank_page(), page_without_grid())
 
-    final, taken = final_screen(page)
+    final, taken = final_screen(page, game="sumbreak")
 
     assert taken == pytest.approx(6)
     assert same(final, page_without_grid())
