@@ -80,6 +80,7 @@ def test_a_refusal_is_a_value_error_the_games_already_treat_as_no_board():
 def test_blank_ink_is_still_no_number():
     assert read_number(np.zeros((20, 20)), at_least=AT_LEAST) is None
 
+
 # Ink 12 rows high: a glyph 10 tall in columns 2-3, a mark 5 tall in columns
 # 6-8 (as the x of a x2 is beside its 2), a speck in column 11, and another
 # glyph 10 tall in columns 14-15.

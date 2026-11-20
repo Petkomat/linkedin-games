@@ -87,8 +87,9 @@ def sumbreak5_with_its_16_showing(sign: str) -> Image.Image:
     draw.rectangle((493, 462, 521, 486), fill=(163, 241, 154))
     if sign == "+":
         draw.text((507, 474), "+", fill=(18, 114, 7), font=ImageFont.load_default(size=26), anchor="mm")
-    else:
-        points = [(507 + r * math.sin(k * math.pi / 5), 475 - r * math.cos(k * math.pi / 5)) for k, r in zip(range(10), [10, 4] * 5)]
+    else:  # points 10 px out, notches 4 px in
+        radii = [10, 4] * 5
+        points = [(507 + r * math.sin(k * math.pi / 5), 475 - r * math.cos(k * math.pi / 5)) for k, r in enumerate(radii)]
         draw.polygon(points, fill=(18, 114, 7))
     return page
 
