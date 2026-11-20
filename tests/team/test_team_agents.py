@@ -28,6 +28,13 @@ def allowed(argv: list[str]) -> list[str]:
     return argv[start:end]
 
 
+def permits(rules: list[str], line: str) -> bool:
+    """Whether the rules let this shell command run, matched as Claude Code
+    does: `Bash(git push)` is that command alone, `Bash(git push *)` is it with
+    any arguments, and `git push` is never a prefix of `git pushx`."""
+    return any(rule == f"Bash({line})" or (rule.endswith(" *)") and line.startswith(rule[len("Bash("):-len("*)")])) for rule in rules)
+
+
 def test_an_agent_runs_headless_and_streams_its_work():
     argv = command(job(), DEVELOPER)
 
@@ -48,7 +55,22 @@ def test_nothing_outside_a_role_s_list_is_allowed_and_nothing_asks():
     assert option(argv, "--permission-mode") == "dontAsk"
     assert "--dangerously-skip-permissions" not in argv
     assert {"Edit", "Write", "Bash(uv run *)", "Bash(git push *)"} <= set(allowed(argv))
-    assert not any("merge" in rule or rule == "Bash" for rule in allowed(argv))
+    assert "Bash" not in allowed(argv)
+
+
+def test_the_developer_may_bring_main_into_its_branch_to_resolve_conflicts():
+    # On #15 all of these were refused, and the Developer copied main's changes by hand.
+    rules = allowed(command(job(), DEVELOPER))
+
+    for line in (
+        "git merge origin/main", "git merge --no-edit origin/main", "git merge --abort",
+        "git rebase origin/main", "git rebase --continue",
+        "git merge-tree", "git merge-tree --write-tree HEAD origin/main",
+        "git checkout origin/main -- somefile",
+    ):
+        assert permits(rules, line), line
+    for line in ("git reset --hard origin/main", "git stash", "gh pr merge 7 --squash"):
+        assert not permits(rules, line), line
 
 
 def test_every_agent_has_one_shell_and_none_of_the_owner_s_mcp_servers():
