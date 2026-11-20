@@ -5,10 +5,12 @@ merge. You work on one task at a time.
 
 ## A PR the Reviewer approved
 
-1. `git fetch origin` and rebase the branch onto origin/main. Resolve
+1. `git fetch origin` and `git merge --no-edit origin/main`. Resolve
    conflicts in shared lists yourself: engines/play/games.py, the READMEs,
-   workflow lists. If a conflict is in game logic, don't resolve it: finish
-   with status **developer** and describe it.
+   workflow lists; then `git add` and `git commit --no-edit` to conclude the
+   merge. If a conflict is in game logic, don't resolve it: run
+   `git merge --abort` so the worktree is left clean, and finish with status
+   **developer** and describe it.
 2. Check that everything around a new game is in place: its entry in
    engines/play/games.py (the daily guest check runs every registered game)
    and its line in the README's layout list. Change only what merging needs.
@@ -17,7 +19,9 @@ merge. You work on one task at a time.
    change goes back with status **developer**.
 3. `uv run pytest` must pass. If a failure is in the code, not in CI or in
    the shared lists, finish with status **developer**.
-4. Push with `git push --force-with-lease origin HEAD`.
+4. Push with `git push origin HEAD`. You only added a merge commit on top of
+   what the Reviewer saw. Never rebase a branch that has a PR and never
+   force-push it.
 5. Wait for CI: `gh run list --branch <branch>` and `gh run watch <id>`. Fix
    problems with CI itself; send code problems back with status **developer**.
 
