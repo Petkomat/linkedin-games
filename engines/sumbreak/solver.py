@@ -1,38 +1,43 @@
 """Backtracking Sumbreak solver.
 
 Numbers only grow, so a tile with the smallest number on the board can only
-ever merge with another tile of that number, and that tile has to be its
-neighbour already. Every smallest tile must merge (or nothing could be left
-but itself), so the smallest tiles are paired off first. Each one is a unit
-whose options are its merges: onto a neighbour with the same number, or that
-neighbour onto it.
+ever merge with another tile of that number or with a x2 tile, and that tile
+has to be its neighbour already (a x2 tile that took another number first
+shows at least twice the smallest). Every smallest tile must merge (or nothing
+could be left but itself), so the smallest tiles are paired off first. Each
+one is a unit whose options are its merges: with a neighbour with the same
+number or a x2 neighbour, either of them dragged onto the other.
 
 A merge is not an option if it leaves a board that can no longer end in one
-tile, which shows in one of three ways:
+tile, which shows in one of four ways:
   * the tiles fall apart into groups with empty cells between them, which can
     never meet again;
-  * a tile has no neighbour with its number, or a smaller one that could
-    double up to it: its neighbours only grow or leave, so it is stuck;
-  * the smallest tiles that touch form a group of an odd size, so they can't
-    all be paired off.
+  * a number has no neighbour with its number, a smaller one that could
+    double up to it, or a x2 tile: its neighbours only grow or leave, so it
+    is stuck;
+  * the smallest tiles can't each get a partner of their own;
+  * the tiles up to some number, in a group that touches, can't add up to
+    tiles of twice that number, even with what the group's x2 tiles add.
 
 The search branches on the unit with the fewest options: one with none is a
 dead end, and one with a single option is forced. Boards it has already seen
 fail are not searched again. The search stops at the first solution. Every
 merge it makes, and every merge it takes back, is written to `trace`.
+
+Two x2 tiles are never merged: no board has shown what that would do.
 """
 
 from __future__ import annotations
 
 from ..common.trace import Trace
-from .model import Cell, Merge, Puzzle
+from .model import DOUBLE, Cell, Merge, Puzzle, Tile, merged
 
-Tiles = dict[Cell, int]
+Tiles = dict[Cell, Tile]
 
 
 def solve(puzzle: Puzzle, trace: Trace | None = None) -> list[Merge] | None:
     trace = Trace() if trace is None else trace
-    failed: set[frozenset[tuple[Cell, int]]] = set()
+    failed: set[frozenset[tuple[Cell, Tile]]] = set()
 
     def search(tiles: Tiles) -> list[Merge] | None:
         if len(tiles) <= 1:
@@ -51,8 +56,10 @@ def solve(puzzle: Puzzle, trace: Trace | None = None) -> list[Merge] | None:
         return None
 
     tiles = puzzle.tiles()
+    numbers = _numbers(tiles)
     if len(tiles) > 1 and (
-        not all(_doubles_to(min(tiles.values()), number) for number in tiles.values())
+        not numbers
+        or not all(_doubles_to(min(numbers), number) for number in numbers)
         or _split(tiles)
         or _unpaired(tiles)
         or _uneven(tiles)
@@ -62,17 +69,21 @@ def solve(puzzle: Puzzle, trace: Trace | None = None) -> list[Merge] | None:
     return search(tiles)
 
 
+def _numbers(tiles: Tiles) -> list[int]:
+    return [number for number in tiles.values() if number != DOUBLE]
+
+
 def _options(tiles: Tiles) -> list[tuple[Merge, Tiles]]:
     """The merges of the smallest tile with the fewest that don't lead to a
     dead board, each with the board it leaves."""
-    smallest = min(tiles.values())
+    smallest = min(_numbers(tiles))
     best: list[tuple[Merge, Tiles]] | None = None
     for cell, number in tiles.items():
         if number != smallest:
             continue
         options = []
         for other in _neighbours(cell):
-            if tiles.get(other) == number:
+            if tiles.get(other) in (number, DOUBLE):
                 for merge in (Merge(cell, other), Merge(other, cell)):
                     after = _after(tiles, merge)
                     if not _dead(after, merge):
@@ -92,7 +103,7 @@ def _touching(cell: Cell, tiles: Tiles) -> int:
 
 def _after(tiles: Tiles, merge: Merge) -> Tiles:
     after = dict(tiles)
-    after[merge.target] += after.pop(merge.source)
+    after[merge.target] = merged(after.pop(merge.source), after[merge.target])
     return after
 
 
@@ -109,9 +120,15 @@ def _dead(tiles: Tiles, merge: Merge) -> bool:
 
 
 def _stuck(cell: Cell, tiles: Tiles) -> bool:
-    """Has the tile on `cell` no neighbour that has, or could double up to, its number?"""
+    """Has the number on `cell` no neighbour that has, or could double up to,
+    its number, nor a x2 tile? A x2 tile merges with any number, so it is
+    never stuck; one cut off from the rest is `_split`."""
     number = tiles[cell]
-    return not any(_doubles_to(tiles[other], number) for other in _neighbours(cell) if other in tiles)
+    if number == DOUBLE:
+        return False
+    return not any(
+        tiles[other] == DOUBLE or _doubles_to(tiles[other], number) for other in _neighbours(cell) if other in tiles
+    )
 
 
 def _doubles_to(small: int, big: int) -> bool:
@@ -129,48 +146,65 @@ def _split(tiles: Tiles) -> bool:
 
 def _uneven(tiles: Tiles) -> bool:
     """Do the tiles up to some number t, in a group that touches, add up to
-    no whole number of tiles of 2t?
+    no whole number of tiles of 2t, even with what its x2 tiles can add?
 
-    Until they reach 2t, such tiles can only merge with each other (the
-    others are bigger), and they can't stay below it, so each group's sum
-    must be made of 2t tiles. Every number is the smallest doubled, which
-    `solve` checks first."""
-    smallest, largest = min(tiles.values()), max(tiles.values())
+    Until they reach 2t, such tiles can only merge with each other or with a
+    x2 tile next to them (the others are bigger), and they can't stay below
+    it, so each group ends up as tiles of 2t. A merge of two of them keeps
+    the group's sum; a x2 tile adds the number it doubles, the smallest
+    number doubled a few times and at most t. So a group that is r short of
+    a multiple of 2t needs at least as many x2 tiles as r has ones in
+    binary, counted in smallest numbers. x2 tiles count as low for every t,
+    which joins the groups they touch. Every number is the smallest doubled,
+    which `solve` checks first."""
+    numbers = _numbers(tiles)
+    smallest, largest = min(numbers), max(numbers)
     t = 2 * smallest  # for t = smallest, `_unpaired` asks more
     while t < largest:
-        low = {cell for cell, number in tiles.items() if number <= t}
+        low = {cell for cell, number in tiles.items() if number == DOUBLE or number <= t}
         while low:
             group = _group(next(iter(low)), low)
-            if sum(tiles[cell] for cell in group) % (2 * t):
-                return True
             low -= group
+            doubles = sum(tiles[cell] == DOUBLE for cell in group)
+            short = -sum(tiles[cell] for cell in group if tiles[cell] != DOUBLE) % (2 * t)
+            if (short // smallest).bit_count() > doubles:
+                return True
         t *= 2
     return False
 
 
 def _unpaired(tiles: Tiles) -> bool:
-    """Can't the smallest tiles all be paired off, each with a neighbour?
+    """Can't each smallest tile get a partner of its own, a neighbour with
+    its number or a x2 tile?
 
-    Neighbours are on cells of different colours of a chessboard, so pairs
-    are a matching between the light and the dark cells, which grows one
-    augmenting path at a time."""
-    smallest = min(tiles.values())
+    Each smallest tile first merges with one of them, and a partner takes
+    only one. Neighbours are on cells of different colours of a chessboard,
+    so partners are a matching between the light and the dark cells, which
+    grows one augmenting path at a time. If the smallest tiles on dark cells
+    can all get partners, and so can those on light cells, one matching
+    gives them all one (Mendelsohn and Dulmage's theorem)."""
+    smallest = min(_numbers(tiles))
     cells = {cell for cell, number in tiles.items() if number == smallest}
-    dark = [cell for cell in cells if sum(cell) % 2]
-    if 2 * len(dark) != len(cells):
-        return True
-    partner: dict[Cell, Cell] = {}  # light cell -> its dark partner
+    partners = cells | {cell for cell, number in tiles.items() if number == DOUBLE}
+    if partners == cells and 2 * sum(sum(cell) % 2 for cell in cells) != len(cells):
+        return True  # without x2 tiles, as many smallest tiles on dark cells as on light ones
+    for colour in (0, 1):
+        partner: dict[Cell, Cell] = {}  # a partner's cell -> the smallest tile it takes
 
-    def pair(cell: Cell, tried: set[Cell]) -> bool:
-        for other in _neighbours(cell):
-            if other in cells and other not in tried:
-                tried.add(other)
-                if other not in partner or pair(partner[other], tried):
-                    partner[other] = cell
-                    return True
-        return False
+        def pair(cell: Cell, tried: set[Cell]) -> bool:
+            for other in _neighbours(cell):
+                if other in partners and other not in tried:
+                    tried.add(other)
+                    if other not in partner or pair(partner[other], tried):
+                        partner[other] = cell
+                        return True
+            return False
 
-    return not all(pair(cell, set()) for cell in dark)
+        if not all(pair(cell, set()) for cell in cells if sum(cell) % 2 == colour):
+            return True
+        if partners == cells:
+            return False  # as many on both sides, and all of one side paired: all are
+    return False
 
 
 def _group(start: Cell, cells) -> set[Cell]:

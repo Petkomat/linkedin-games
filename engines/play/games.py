@@ -49,6 +49,12 @@ class Game:
     solve: Callable[[Any], Any | None]
     solution_text: Callable[[Any, Any], str]  # (puzzle, solution) -> a readable table
     legend: str  # what the table's symbols mean
+    # True if LinkedIn always shows a blank page between this game's last move
+    # and its result screen, and what comes before it can hold still for a
+    # while but isn't worth saving, like Sumbreak's fallen tiles. The player
+    # then saves only a screen that comes after the blank page (see
+    # Player.final_screen).
+    result_after_blank: bool = False
 
 
 def _linkedin(slug: str, **game: Any) -> Game:
@@ -84,6 +90,7 @@ GAMES = {
                 "Each tile is dragged onto the neighbour its arrow points to, in the merge with its number "
                 "(1 is the first). * is the tile left at the end, . an empty cell."
             ),
+            result_after_blank=True,  # its tiles fall and lie at the bottom of the page first
         ),
         _linkedin(
             "tango", name="tango", title="Tango",

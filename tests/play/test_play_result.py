@@ -212,24 +212,121 @@ def faint_dashes() -> Image.Image:
     return page
 
 
-def final_screen(page: Frames, wait: ResultWait | None = None) -> tuple[Image.Image, float]:
-    """The player's final screen on `page`, and when it was taken on a stand-in
-    clock started at the last move. By default the player waits as it does on
-    LinkedIn: a first look 2 s after the last move, then looks 1 s apart."""
+def final_screen(page: Frames, wait: ResultWait | None = None, game: str = "queens") -> tuple[Image.Image, float]:
+    """The player's final screen of `game` on `page`, and when it was taken on
+    a stand-in clock started at the last move. By default the player waits as
+    it does on LinkedIn: a first look 2 s after the last move, then looks 1 s
+    apart."""
     clock = StandInClock()
-    final = Player(page, result_wait=wait or ResultWait(), clock=clock).final_screen()
+    final = Player(page, result_wait=wait or ResultWait(), clock=clock).final_screen(GAMES[game])
     return final, clock.now()
 
 
-def test_a_board_that_already_holds_still_is_taken_at_the_second_look():
-    # Queens, Tango and Mini Sudoku have always shown their board 2 s after the last move.
+# Sumbreak, measured on sumbreak5.png, a guest's whole window (1280x1600)
+SUMBREAK_CARD = (416, 81, 864, 648)  # the card with the board and its buttons
+SUMBREAK_CELLS = (448, 580, 712), (149, 281, 414)  # the left edges of its columns, the top edges of its rows
+SUMBREAK_CELL = 120  # a cell's side
+EMPTY_CELL = (233, 227, 220)
+LINKEDIN_BLUE = (10, 102, 194)
+
+
+def sumbreak_tiles() -> list[Image.Image]:
+    """The eight tiles of sumbreak5.png, row by row; its ninth cell is empty."""
+    page = Image.open(example("sumbreak", "sumbreak5.png")).convert("RGB")
+    xs, ys = SUMBREAK_CELLS
+    tiles = [page.crop((x, y, x + SUMBREAK_CELL, y + SUMBREAK_CELL)) for y in ys for x in xs]
+    return [tile for tile in tiles if tile.getpixel((60, 10)) != EMPTY_CELL]
+
+
+def lone_tile() -> Image.Image:
+    """sumbreak5.png with all but its last tile merged away: the board right
+    after the last merge."""
+    page = Image.open(example("sumbreak", "sumbreak5.png")).convert("RGB")
+    draw = ImageDraw.Draw(page)
+    xs, ys = SUMBREAK_CELLS
+    for y in ys:
+        for x in xs:
+            if (x, y) != (xs[-1], ys[-1]):
+                draw.rounded_rectangle((x, y, x + SUMBREAK_CELL - 1, y + SUMBREAK_CELL - 1), 8, fill=EMPTY_CELL)
+    return page
+
+
+def fallen_tiles() -> Image.Image:
+    """sumbreak5.png's tiles fallen to the bottom of the window, in a heap two
+    tiles high, slightly turned, and the card gone: the way Sumbreak's tiles
+    lay at the bottom of an otherwise empty page after its last merge on
+    2026-11-20."""
+    page = Image.open(example("sumbreak", "sumbreak5.png")).convert("RGB")
+    ImageDraw.Draw(page).rectangle(SUMBREAK_CARD, fill=PAGE_GREY)
+    rng = random.Random(1)
+    tiles = sumbreak_tiles()
+    for row, heap in enumerate((tiles[:5], tiles[5:])):
+        left = page.width // 2 - len(heap) * SUMBREAK_CELL // 2
+        top = page.height - (row + 1) * (SUMBREAK_CELL - 10)
+        for i, tile in enumerate(heap):
+            turned = tile.rotate(rng.uniform(-12, 12), expand=True, fillcolor=PAGE_GREY)
+            page.paste(turned, (left + i * SUMBREAK_CELL, top - (turned.height - SUMBREAK_CELL)))
+    return page
+
+
+def logo_page() -> Image.Image:
+    """An empty page with LinkedIn's logo, a blue square, in its middle: what
+    LinkedIn shows between Sumbreak's fallen tiles and its result screen."""
+    page = Image.new("RGB", (1280, 1600), PAGE_GREY)
+    middle_x, middle_y = page.width // 2, page.height // 2
+    ImageDraw.Draw(page).rounded_rectangle((middle_x - 28, middle_y - 28, middle_x + 28, middle_y + 28), 6, fill=LINKEDIN_BLUE)
+    return page
+
+
+def sumbreak_result() -> Image.Image:
+    return Image.open(example("sumbreak", "sumbreak-result1.png")).convert("RGB")
+
+
+def test_sumbreaks_fallen_tiles_are_not_saved_however_long_they_lie_still():
+    # The guest play on 2026-11-20: after the last merge the lone tile showed,
+    # then the tiles fell to the bottom of the page and lay there, then came an
+    # empty page with LinkedIn's logo, then the result screen.
+    fallen = fallen_tiles()
+    assert not looks_blank(fallen) and looks_blank(logo_page())
+    page = Frames(lone_tile(), fallen, fallen, fallen, fallen, logo_page(), sumbreak_result())
+
+    final, taken = final_screen(page, game="sumbreak")
+
+    assert same(final, sumbreak_result())
+    assert taken == pytest.approx(9), "the result showed at 8 s and held still at 9 s"
+
+
+@pytest.mark.parametrize("game", ["patches", "queens", "sudoku", "tango", "wend", "zip"])
+def test_a_board_that_already_holds_still_is_taken_at_the_second_look(game):
+    # Queens, Tango and Mini Sudoku have always shown their board 2 s after
+    # the last move. Only Sumbreak waits for a blank page.
     page = Frames(board())
 
-    final, taken = final_screen(page)
+    final, taken = final_screen(page, game=game)
 
     assert taken == pytest.approx(3)
     assert page.shots == 2
     assert same(final, board())
+
+
+def test_sumbreaks_result_screen_shown_straight_after_its_fallen_tiles_is_saved_at_the_limit():
+    # Were LinkedIn to drop the blank page, or show it only between two looks
+    page = Frames(lone_tile(), fallen_tiles(), fallen_tiles(), sumbreak_result())
+
+    final, taken = final_screen(page, ResultWait(limit=8), game="sumbreak")
+
+    assert taken == pytest.approx(8)
+    assert page.shots == 7, "it kept looking, at 2, 3, ... 8 s"
+    assert same(final, sumbreak_result())
+
+
+def test_sumbreaks_screen_counts_straight_away_once_the_first_look_is_blank():
+    page = Frames(logo_page(), sumbreak_result())
+
+    final, taken = final_screen(page, game="sumbreak")
+
+    assert taken == pytest.approx(4)
+    assert same(final, sumbreak_result())
 
 
 def test_blank_screens_are_waited_out_and_the_first_screen_that_holds_still_is_kept():
@@ -256,7 +353,7 @@ def test_a_moving_frame_then_a_blank_page_then_the_result_saves_the_result():
     # the result screen showed up 5-6 s after the last move.
     page = Frames(scattered(0.1), blank_page(), blank_page(), page_without_grid())
 
-    final, taken = final_screen(page)
+    final, taken = final_screen(page, game="sumbreak")
 
     assert taken == pytest.approx(6)
     assert same(final, page_without_grid())
@@ -336,7 +433,7 @@ def test_a_first_look_that_ends_after_the_limit_is_taken_as_it_is():
     clock = StandInClock()
     page = TimedFrames(blank_page(), board(), clock=clock, each_look_takes=3)
 
-    final = Player(page, result_wait=ResultWait(limit=4), clock=clock).final_screen()
+    final = Player(page, result_wait=ResultWait(limit=4), clock=clock).final_screen(GAMES["queens"])
 
     assert page.looks == [2], "no look after the limit"
     assert clock.now() == 5
@@ -347,7 +444,7 @@ def test_slow_looks_at_a_blank_page_still_stop_at_the_limit():
     clock = StandInClock()
     page = TimedFrames(blank_page(), clock=clock, each_look_takes=0.5)
 
-    final = Player(page, result_wait=ResultWait(limit=6), clock=clock).final_screen()
+    final = Player(page, result_wait=ResultWait(limit=6), clock=clock).final_screen(GAMES["queens"])
 
     assert page.looks == [2, 3.5, 5, 6], "a second's wait between looks, and the last wait cut short by the limit"
     assert same(final, blank_page())
@@ -357,7 +454,7 @@ def test_a_screen_that_shows_up_at_the_limit_on_a_busy_machine_is_taken_without_
     clock = StandInClock()
     page = TimedFrames(blank_page(), board(), clock=clock, each_look_takes=1.5)
 
-    final = Player(page, result_wait=ResultWait(limit=4), clock=clock).final_screen()
+    final = Player(page, result_wait=ResultWait(limit=4), clock=clock).final_screen(GAMES["queens"])
 
     assert page.looks == [2, 4], "the board showed at 4 s, and that look took until 5.5 s"
     assert same(final, board())
@@ -367,7 +464,7 @@ def test_on_a_busy_machine_the_second_look_comes_a_second_after_the_first_one_en
     clock = StandInClock()
     page = TimedFrames(board(), clock=clock, each_look_takes=1.5)
 
-    final = Player(page, result_wait=ResultWait(), clock=clock).final_screen()
+    final = Player(page, result_wait=ResultWait(), clock=clock).final_screen(GAMES["queens"])
 
     assert page.looks == [2, 4.5], "the first look took until 3.5 s"
     assert clock.now() == 6

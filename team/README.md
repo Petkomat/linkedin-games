@@ -22,7 +22,7 @@ GitHub Actions, daily (daily.yml)        the owner's machine (python -m team run
 | triage | Project Manager (Sonnet) | develop · ops · split · wait for #n · declined (a knowledge game) · needs-human · done |
 | develop | Developer ×2 (Opus) | builds test-first, plays once as a guest, pushes → review |
 | review | Reviewer ×2 (Opus) | its review goes on the PR: approve → ops · changes → develop; after the third, the owner decides |
-| ops | Operator ×1 (Sonnet) | rebase, tests, CI → ready |
+| ops | Operator ×1 (Sonnet) | merge main, tests, CI → ready |
 | ready | the owner | approves the PR: the orchestrator merges it and closes the task |
 | split | the orchestrator | files the parts as sub-issues and starts each once the one before is closed; closes the task after the last |
 
@@ -129,6 +129,10 @@ The team mentions you on GitHub, and the board lists the task under
   public repo, so this keeps strangers from steering the agents.
 - Agents never use the owner's LinkedIn account. They only go to LinkedIn as
   a guest, in a fresh browser ([ADR 0002](../docs/adr/0002-agents-never-use-the-linkedin-account.md)).
+- The Developer's permissions refuse a force push, not only its instructions:
+  it may push only with `git push -u origin HEAD` or `git push origin HEAD`,
+  so the commits the Reviewer saw stay as they are. The Operator keeps
+  `--force-with-lease` for its rebase onto main.
 - The permission lists are guardrails, not a sandbox: `uv run` runs any
   Python. The real limits are branch protection, the bot's own
   account, and the owner's review.

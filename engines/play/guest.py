@@ -88,7 +88,7 @@ def play(
     seen, actions = board
     (out / f"{game.name}.md").write_text(report(game, seen.puzzle, datetime.now()), encoding="utf-8")
     player.perform(actions, seen.grid)
-    player.final_screen().save(out / f"{game.name}.png")
+    player.final_screen(game).save(out / f"{game.name}.png")
     return True
 
 

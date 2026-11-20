@@ -113,13 +113,14 @@ the board.
 On its way from the finished board to its result screen, LinkedIn may show
 only its top bar over an empty grey page for a while. Zip and Wend nearly
 always did for more than 2 s, so a fixed wait saved a blank screen. Some games
-play an animation first: after Sumbreak's last move, its board's tiles
-scatter and tumble across the page for about 2 s, then the page goes blank,
-and the result screen shows up 5-6 s after the last move. Saving the first
-screen that wasn't blank once saved a frame of that scatter. So
-[`Player.final_screen`](browser.py) waits until the page isn't blank and holds
-still, for every game. Both `python -m engines.play` and `guest play` save
-what it returns:
+play an animation first: after Sumbreak's last move, on 2026-11-18 its board's
+tiles scattered and tumbled across the page for about 2 s; since 2026-11-20
+they fall to the bottom of the page and lie there for a moment. Then the page
+goes blank, with LinkedIn's logo, and the result screen shows up 5-6 s after
+the last move. Saving the first screen that wasn't blank once saved a frame of
+that scatter. So [`Player.final_screen`](browser.py) waits until the page
+isn't blank and holds still, for every game. Both `python -m engines.play` and
+`guest play` save what it returns:
 
 - It first looks 2 s after the last move, which gives the game time to take
   it.
@@ -130,9 +131,17 @@ what it returns:
   Queens, Tango and Mini Sudoku show their board 2 s after the last move, so
   it is saved at 3 s, one look later than when the first screen that wasn't
   blank was saved straight away.
+- Sumbreak's fallen tiles hold still, so for Sumbreak a screen counts only
+  once the page has been blank: until then, it looks every second and saves
+  nothing. A game says so with `result_after_blank=True` in
+  [`games.py`](games.py); only Sumbreak does. On the 2026-11-20 guest play
+  the fallen tiles were saved before this, and the result screen after it,
+  about 5 s after the last move.
 - 20 s after the last move, it stops waiting and saves the last screenshot,
   blank, moving or not. The game was finished, so the play still counts as
-  done; `engines.play` says if the page looked blank.
+  done; `engines.play` says if the page looked blank. If LinkedIn ever drops
+  Sumbreak's blank page, or shows it only between two looks, this is when
+  its result screen is saved.
 
 The times are in `ResultWait` ([`result.py`](result.py)). `looks_alike` there
 decides when two looks are alike. It compares the same part of the screen as
@@ -154,10 +163,11 @@ in the tests, the same at full and half resolution:
 | a screen half faded in, and fully | 48% |
 | a screen 95% faded in, and fully | 0% |
 
-There is no frame of Sumbreak's real scatter to measure. Once nearly all
-tiles have left the middle third, two looks can be alike (3% on one drawn
-case). Such a frame is saved only if two looks a second apart both land after
-the tiles have nearly gone and before the page goes blank.
+There is no frame of Sumbreak's real scatter or fall to measure. Once nearly
+all tiles have left the middle third, two looks can be alike (3% on one drawn
+case), and tiles lying at the bottom of the page are alike from one look to
+the next. Neither is saved, because Sumbreak's screens count only after its
+blank page.
 
 `looks_blank` decides what is blank. It looks below the top tenth of the screen
 (LinkedIn's bar and the game's bar) and only at the middle third of its width,
@@ -216,7 +226,11 @@ days.
   screen on a stand-in page whose screenshots are given one by one, timed by
   the stand-in clock: a scatter frame, a blank page and then the result; two
   different moving frames and then the result; a screen that never holds
-  still; a board that holds still from the first look.
+  still; a board that holds still from the first look, for every game but
+  Sumbreak. For Sumbreak: its lone tile, its tiles fallen to the bottom of the
+  page for four looks, a blank page with LinkedIn's logo and then
+  sumbreak-result1.png, which must be saved; and the same without the blank
+  page, which saves the result at the limit.
   `test_play_cli.py` and `test_play_guest.py` play on a local page that goes
   blank after the last move, like LinkedIn's, for both players.
 

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from team.agents import command, outcome
 from team.model import Failed, Job, UsageLimited, Verdict
-from team.roles import BY_NAME, DEVELOPER, PROJECT_MANAGER, REVIEWER
+from team.roles import BY_NAME, DEVELOPER, OPERATOR, PROJECT_MANAGER, REVIEWER
 
 STREAMS = Path(__file__).parent / "streams"
 
@@ -26,6 +26,13 @@ def allowed(argv: list[str]) -> list[str]:
     start = argv.index("--allowedTools") + 1
     end = next((i for i in range(start, len(argv)) if argv[i].startswith("-")), len(argv))
     return argv[start:end]
+
+
+def permits(rules: list[str], line: str) -> bool:
+    """Whether the rules let this shell command run, matched as Claude Code
+    does: `Bash(git push)` is that command alone, `Bash(git push *)` is it with
+    any arguments, and `git push` is never a prefix of `git pushx`."""
+    return any(rule == f"Bash({line})" or (rule.endswith(" *)") and line.startswith(rule[len("Bash("):-len("*)")])) for rule in rules)
 
 
 def test_an_agent_runs_headless_and_streams_its_work():
@@ -47,8 +54,47 @@ def test_nothing_outside_a_role_s_list_is_allowed_and_nothing_asks():
 
     assert option(argv, "--permission-mode") == "dontAsk"
     assert "--dangerously-skip-permissions" not in argv
-    assert {"Edit", "Write", "Bash(uv run *)", "Bash(git push *)"} <= set(allowed(argv))
-    assert not any("merge" in rule or rule == "Bash" for rule in allowed(argv))
+    assert {"Edit", "Write", "Bash(uv run *)", "Bash(git commit *)"} <= set(allowed(argv))
+    assert "Bash" not in allowed(argv)
+
+
+def test_the_developer_may_push_its_branch_but_never_force_it():
+    # A force push would replace the commits the Reviewer saw, and nobody would notice (#26).
+    rules = allowed(command(job(), DEVELOPER))
+
+    for line in ("git push -u origin HEAD", "git push origin HEAD"):
+        assert permits(rules, line), line
+    for line in (
+        "git push --force", "git push -f", "git push -fu origin HEAD", "git push -uf origin HEAD",
+        "git push --force origin HEAD", "git push origin HEAD --force", "git push -u origin HEAD -f",
+        "git push --force-with-lease origin HEAD", "git push --force-if-includes origin HEAD",
+        "git push origin +HEAD", "git push -u origin +HEAD:team/7-new-game-sumbreak",
+        "git push --mirror", "git push --delete origin team/7-new-game-sumbreak",
+        "git push origin :team/7-new-game-sumbreak", "git push origin HEAD:main",
+    ):
+        assert not permits(rules, line), line
+
+
+def test_the_operator_may_still_force_push_with_a_lease_after_a_rebase():
+    rules = allowed(command(job("operator"), OPERATOR))
+
+    for line in ("git push --force-with-lease origin HEAD", "git push -u origin HEAD", "git rebase origin/main"):
+        assert permits(rules, line), line
+
+
+def test_the_developer_may_bring_main_into_its_branch_to_resolve_conflicts():
+    # On #15 all of these were refused, and the Developer copied main's changes by hand.
+    rules = allowed(command(job(), DEVELOPER))
+
+    for line in (
+        "git merge origin/main", "git merge --no-edit origin/main", "git merge --abort",
+        "git rebase origin/main", "git rebase --continue",
+        "git merge-tree", "git merge-tree --write-tree HEAD origin/main",
+        "git checkout origin/main -- somefile",
+    ):
+        assert permits(rules, line), line
+    for line in ("git reset --hard origin/main", "git stash", "gh pr merge 7 --squash"):
+        assert not permits(rules, line), line
 
 
 def test_every_agent_has_one_shell_and_none_of_the_owner_s_mcp_servers():
