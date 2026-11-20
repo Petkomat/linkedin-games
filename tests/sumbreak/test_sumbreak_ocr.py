@@ -5,7 +5,7 @@ from engines.sumbreak import Puzzle
 from engines.sumbreak.ocr import read_puzzle, scan
 from tests.helpers import example
 
-from .boards import SUMBREAK1, SUMBREAK4, board
+from .boards import SUMBREAK1, SUMBREAK4, SUMBREAK5, board
 from .generator import random_puzzle
 from .pictures import MARGIN, drawn
 
@@ -30,6 +30,16 @@ def test_reads_square_tiles_on_a_high_resolution_screen():
 
 def test_an_emptied_cell_is_no_tile():
     assert read_puzzle(example("sumbreak", "sumbreak4.png")) == SUMBREAK4
+
+
+@pytest.mark.parametrize("scale", [1, 2])
+def test_reads_x2_tiles_as_tiles_that_double_not_as_a_2(scale):
+    # Its "x2" is printed in a greyish purple on a pale diamond, and the x is
+    # smaller than the 2.
+    page = Image.open(example("sumbreak", "sumbreak5.png"))
+    page = page.resize((scale * page.width, scale * page.height), Image.LANCZOS)
+
+    assert read_puzzle(page) == SUMBREAK5
 
 
 @pytest.mark.parametrize(
