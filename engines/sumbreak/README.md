@@ -29,7 +29,10 @@ the first board (sumbreak1.png):
   circle (0.19 of a cell across from its middle), and the one guest play
   whose result icon showed circles merged every tile.
 - After the last merge, the lone tile shows for a moment, then a blank page
-  with LinkedIn's logo, then the result screen (sumbreak-result1.png).
+  with LinkedIn's logo, then the result screen (sumbreak-result1.png). Since
+  2026-11-20, the tiles first fall to the bottom of the page and lie there
+  for a moment, so the player saves only a screen after the blank page (see
+  [The final screen](../play/README.md#the-final-screen)).
 
 On 2026-11-20 the daily board (sumbreak5.png) had two **x2 tiles**: purple
 squares with "×2" on a pale diamond, called "Multiply by 2" for screen

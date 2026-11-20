@@ -100,25 +100,29 @@ class Player:
             previous = board
             clock.sleep(RETRY)
 
-    def final_screen(self) -> Image.Image:
-        """The screen to save after the last move: the finished board or the
-        game's result screen, once it holds still. On its way from one to the
-        other, LinkedIn may play an animation and show an empty page for a
-        while, so a screen counts only once it isn't blank and the next look
-        is alike (see `looks_blank` and `looks_alike`). Looks are timed as
+    def final_screen(self, game: Game) -> Image.Image:
+        """The screen to save after the last move of `game`: the finished board
+        or the game's result screen, once it holds still. On its way from one
+        to the other, LinkedIn may play an animation and show an empty page for
+        a while, so a screen counts only once it isn't blank and the next look
+        is alike (see `looks_blank` and `looks_alike`). For a game whose result
+        comes only after a blank page (`Game.result_after_blank`), a screen
+        counts only once the page has been blank. Looks are timed as
         `result_wait` says. At its limit, the last screenshot taken."""
         wait, clock = self.result_wait, self.clock
         deadline = clock.now() + wait.limit
         clock.sleep(min(wait.first_look, wait.limit))
         shown = self.screenshot()
         blank = looks_blank(shown)
+        past_blank = blank or not game.result_after_blank  # a screen that isn't blank may count from now on
         while (left := deadline - clock.now()) > 0:
-            clock.sleep(min(wait.poll if blank else wait.settle, left))
+            clock.sleep(min(wait.settle if past_blank and not blank else wait.poll, left))
             seen = self.screenshot()
             seen_blank = looks_blank(seen)
-            if not blank and not seen_blank and looks_alike(shown, seen):
+            if past_blank and not blank and not seen_blank and looks_alike(shown, seen):
                 return seen
             shown, blank = seen, seen_blank
+            past_blank = past_blank or blank
         return shown
 
     def read(self, game: Game) -> tuple[Any, list[Action]] | None:
