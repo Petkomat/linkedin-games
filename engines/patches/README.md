@@ -48,3 +48,8 @@ other engines in [`engines/vision`](../vision).
    holes (font-independent), then matched by HOG descriptor against digits
    rendered from Pillow's bundled font at several stroke weights. No digit
    samples come from the screenshots, so the OCR tests aren't circular.
+   A glyph that matches no digit well enough is refused, and so is the
+   board (the threshold is measured in engines/sumbreak/README.md).
+   patches2.png, from a clone site, is refused that way: its pixel font is
+   like no digit, and its 2 read as 7. Its badge shapes are still checked,
+   with every digit let through.
