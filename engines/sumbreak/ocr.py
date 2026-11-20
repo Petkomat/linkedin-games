@@ -35,8 +35,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..vision import GridGeometry, ImageSource, Lattice, load_rgb, read_number
-from ..vision.morphology import crop
+from ..vision import GridGeometry, ImageSource, Lattice, load_rgb, read_number, split_glyphs
 from .model import DOUBLE, Puzzle, Tile
 
 COLOURFUL = 40  # a pixel whose channels differ by more than this is part of a tile (tiles ~90-200, the card 5)
@@ -273,9 +272,8 @@ def _label(box: np.ndarray, colourful: np.ndarray) -> Tile | None:
     if darkest > colour - DARKER:
         return None
     ink = brightness < (colour + darkest) / 2
-    marks = _marks(ink)
+    marks = split_glyphs(ink, speck=SPECK)
     tallest = max(mark.shape[0] for _, mark in marks)
-    marks = [(left, mark) for left, mark in marks if mark.shape[0] >= SPECK * tallest]
     signs = [i for i, (_, mark) in enumerate(marks) if mark.shape[0] < SIGN * tallest or _is_times(mark)]
     if not signs:
         return read_number(ink.astype(float))
@@ -286,14 +284,6 @@ def _label(box: np.ndarray, colourful: np.ndarray) -> Tile | None:
     digits[:, : left + sign.shape[1]] = False
     factor = read_number(digits.astype(float))
     return "x" if factor is None else DOUBLE if factor == 2 else f"x{factor}"
-
-
-def _marks(ink: np.ndarray) -> list[tuple[int, np.ndarray]]:
-    """The ink cut at empty columns into marks, left to right: where each
-    starts, and its pixels cut to their box."""
-    columns = np.flatnonzero(ink.any(axis=0))
-    runs = np.split(columns, np.flatnonzero(np.diff(columns) > 1) + 1)
-    return [(int(run[0]), crop(ink[:, run[0] : run[-1] + 1])) for run in runs]
 
 
 def _is_times(mark: np.ndarray) -> bool:

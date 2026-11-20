@@ -135,8 +135,9 @@ show where the cells are.
    result screen's icon is a 2x2 board of numbers.
 4. **Numbers:** a number is printed in a darker shade of its tile's colour.
    Its ink, the pixels darker than halfway from the tile's colour to the
-   darkest one, is cut into marks at empty columns. Paler edges would close
-   the gap of a small 6, which then reads as 8.
+   darkest one, is cut into marks at empty columns, by the shared
+   `split_glyphs` that `read_number` uses too. Paler edges would close the
+   gap of a small 6, which then reads as 8.
 5. **x2:** the digits of a number are all as tall. A mark under 80% of the
    tallest is a sign, and so is one shaped like an x (two diagonals, give or
    take a pixel, and nothing at the middles of its sides, as a + would
@@ -156,7 +157,9 @@ show where the cells are.
      only covers cells of the grid the tiles span: a row or column at the
      edge with nothing but such shapes on it is not seen at all.
 
-   The daily check and the player take a board that `scan` refuses as no
+   A symbol as tall as the digits and not shaped like an x is not caught: it
+   goes to the shared glyph reader, which answers with its nearest digit (a
+   + painted on a tile reads as 1). The daily check and the player take a board that `scan` refuses as no
    board: they never play it.
 
 Tested on the real board in both looks, at devicePixelRatio 1 and 2, on a

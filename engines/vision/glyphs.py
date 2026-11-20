@@ -35,10 +35,10 @@ STROKE_WEIGHTS = (0, 2, 4, 6)
 
 def read_number(ink: np.ndarray) -> int | None:
     """`ink` is a 0..1 map of digit pixels; returns the number or None if blank."""
-    glyphs = _split_glyphs(ink)
+    glyphs = split_glyphs(ink)
     if not glyphs:
         return None
-    return int("".join(_classify(glyph, DIGITS) for glyph in glyphs))
+    return int("".join(_classify(glyph, DIGITS) for _, glyph in glyphs))
 
 
 def read_letter(ink: np.ndarray) -> str | None:
@@ -49,17 +49,19 @@ def read_letter(ink: np.ndarray) -> str | None:
     return _classify(ink[bbox(solid)], LETTERS)
 
 
-def _split_glyphs(ink: np.ndarray) -> list[np.ndarray]:
-    """Cut the ink into glyphs at empty columns, dropping specks."""
-    solid = ink > 0.5
-    columns = np.flatnonzero(solid.any(axis=0))
+def split_glyphs(ink: np.ndarray, speck: float = 0.6) -> list[tuple[int, np.ndarray]]:
+    """Cut `ink` (a 0..1 or boolean map) into glyphs at empty columns, left to
+    right: each glyph's first column, and its pixels cut to their box. A
+    glyph shorter than `speck` of the tallest is a speck and dropped; digits
+    are all about as tall."""
+    columns = np.flatnonzero((ink > 0.5).any(axis=0))
     if columns.size == 0:
         return []
     runs = np.split(columns, np.flatnonzero(np.diff(columns) > 1) + 1)
-    glyphs = [ink[:, run[0] : run[-1] + 1] for run in runs]
-    glyphs = [g[bbox(g > 0.5)] for g in glyphs]
-    tallest = max(g.shape[0] for g in glyphs)
-    return [g for g in glyphs if g.shape[0] >= 0.6 * tallest]
+    glyphs = [(int(run[0]), ink[:, run[0] : run[-1] + 1]) for run in runs]
+    glyphs = [(left, glyph[bbox(glyph > 0.5)]) for left, glyph in glyphs]
+    tallest = max(glyph.shape[0] for _, glyph in glyphs)
+    return [(left, glyph) for left, glyph in glyphs if glyph.shape[0] >= speck * tallest]
 
 
 def _classify(glyph: np.ndarray, alphabet: str) -> str:
