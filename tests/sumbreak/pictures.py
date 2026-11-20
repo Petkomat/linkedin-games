@@ -7,9 +7,10 @@ Pillow's own font, so this checks finding the board and its cells more than
 reading digits, which the real screenshots check.
 
 A x2 tile is purple with "×2" in a greyish purple, as on sumbreak5.png: a
-square with a pale diamond, or, in the look with circles, a starburst (only
-seen on a result screen's icon, so its points are a guess). Pillow's font has
-no ×, so it is drawn as two strokes.
+square with a pale diamond, or, in the look with circles, a starburst. The
+real one is a scalloped circle (sumbreak6.png); a starburst with deeper
+points checks that a spikier x2 tile is still read. Pillow's font has no ×,
+so it is drawn as two strokes.
 """
 
 from __future__ import annotations
