@@ -3,9 +3,9 @@ import pytest
 from engines.sumbreak import solve
 from tests.helpers import solve_within
 
-from .boards import SUMBREAK1, board
+from .boards import SUMBREAK1, SUMBREAK5, board
 from .generator import random_puzzle
-from .rules import assert_is_solution
+from .rules import assert_is_solution, tiles_after
 
 
 def test_solves_the_sumbreak1_example():
@@ -13,6 +13,14 @@ def test_solves_the_sumbreak1_example():
 
     assert_is_solution(SUMBREAK1, merges)
     assert len(merges) == 8
+
+
+def test_solves_the_sumbreak5_example_whose_x2_tiles_double_what_they_meet():
+    # 1 x2 1 / . 4 1 / 16 x2 4: the numbers add up to 27, so only doubling
+    # makes one tile of them. A guest won it with 32 left.
+    merges = solve(SUMBREAK5)
+
+    assert list(tiles_after(SUMBREAK5, merges).values()) == [32]
 
 
 @pytest.mark.parametrize(
