@@ -22,7 +22,7 @@ GitHub Actions, daily (daily.yml)        the owner's machine (python -m team run
 | triage | Project Manager (Sonnet) | develop · ops · split · wait for #n · declined (a knowledge game) · needs-human · done |
 | develop | Developer ×2 (Opus) | builds test-first, plays once as a guest, pushes → review |
 | review | Reviewer ×2 (Opus) | its review goes on the PR: approve → ops · changes → develop; after the third, the owner decides |
-| ops | Operator ×1 (Sonnet) | rebase, tests, CI → ready |
+| ops | Operator ×1 (Sonnet) | merge main, tests, CI → ready |
 | ready | the owner | approves the PR: the orchestrator merges it and closes the task |
 | split | the orchestrator | files the parts as sub-issues and starts each once the one before is closed; closes the task after the last |
 
