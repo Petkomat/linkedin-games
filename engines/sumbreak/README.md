@@ -162,16 +162,19 @@ show where the cells are.
    The daily check and the player take a board that `scan` refuses as no
    board: they never play it.
 
-### Digit or symbol: how well a glyph must match
+### Digit or symbol: how well a mark must match
 
 The shared glyph reader (`engines/vision/glyphs.py`) compares a glyph with
-each digit by the cosine of their descriptors (1 for the same shape). Up to
-2026-11-20 it answered with the nearest digit however poor the match, so a +
-painted on a tile read as 1. Now a glyph whose nearest digit matches less
-than **0.58** is refused. The threshold was measured on 2026-11-20 on every
-example board of every game, each screenshot as it is and at twice its
-size, against symbols printed on sumbreak5's 16 tile in the 16's ink, as
-tall as its digits (45 symbols at both sizes):
+each digit by the cosine of their descriptors (1 for the same shape), and by
+default answers with the nearest digit however poor the match: a + painted
+on a tile read as 1 (issue #34). Sumbreak asks it for a match of at least
+**0.58**. A mark that matches its nearest digit less is refused as an
+unknown sign. The other games don't ask; see below why.
+
+Measured on 2026-11-20 on every example board of every game, each
+screenshot as it is and at twice its size, and on today's daily boards seen
+by a guest. The symbols were printed on sumbreak5's 16 tile in the 16's
+ink, as tall as its digits: 45 symbols, at both sizes.
 
 | Glyphs | Lowest match, as is | at twice the size |
 |---|---|---|
@@ -181,33 +184,31 @@ tall as its digits (45 symbols at both sizes):
 | sumbreak5 | 0.855 | 0.897 |
 | sumbreak6 | 0.842 | 0.856 |
 | sudoku1, patches1, zip1, zip2 | 0.649 (sudoku1's 3) | 0.727 |
-| wend1, wend2 (letters) | 0.758 | 0.828 |
+| today's Zip (zip3.png) | 0.572 (a thin 3) | |
+| today's Patches | 0.662 (a 3) | |
+| today's Mini Sudoku | over 0.66 | |
 | patches2, a clone site's pixel font | 0.411 | 0.322 |
 | + on the 16 tile (read as 1) | 0.354 | 0.476 |
 | five-pointed star on the 16 tile | 0.411 | 0.368 |
 
-- **The sets overlap.** Symbols shaped like a digit match it as well as real
-  digits do: ] 0.865, ! 0.815 and | 0.767 as 1, ? 0.777 as 2, a disc 0.710
-  as 3, an up arrow 0.706 as 1, @ 0.686 as 0. 29 of the 90 symbol glyphs
-  match at 0.58 or more and are read as a digit. The other 61, among them
-  every +, -, =, ~, %, <, >, *, 5-pointed star, heart, triangle, diamond and
-  right or down arrow, are refused.
-- **The compromise:** 0.58 is about halfway between the highest + (0.52,
-  Pillow's + printed alone at 14 px) and the lowest real digit (0.649, the
-  LinkedIn 3 with its flat top on sudoku1). So the + of issue #34 is refused
-  with a margin of 0.06 to 0.23, and real digits are kept with a margin of
-  0.07 or more.
+- **Sumbreak only.** On the Sumbreak boards the lowest real digit matches
+  0.672 and the highest + 0.52 (Pillow's + printed alone at 14 px), so 0.58
+  keeps real digits with a margin of 0.09 and refuses the + of issue #34
+  with a margin of 0.06 to 0.23. Across all games there is no such gap: on
+  today's Zip a thin 3 matched only 0.572. A threshold shared by every game
+  would have to fit between the + (0.52) and that 3, a gap of 0.05, and a
+  thinner 3 some day would be refused and its game not played. Today's
+  Sumbreak board was read and played with 0.58.
+- **The sets overlap anyway.** Symbols shaped like a digit match it as well
+  as real digits do: ] 0.865, ! 0.815 and | 0.767 as 1, ? 0.777 as 2, a
+  disc 0.710 as 3, an up arrow 0.706 as 1, @ 0.686 as 0. 29 of the 90
+  symbol glyphs match at 0.58 or more and are read as a digit. The other 61
+  are refused, among them every +, -, =, ~, %, <, >, *, five-pointed star,
+  heart, triangle, diamond and right or down arrow.
 - **LinkedIn's 1 on round tiles** has a slab foot, which Pillow's 1 hasn't
   got. It matched only 0.471, no better than a +, so the reader also
   compares a 1 with Pillow's 1 with a foot added. On sumbreak2 it now
-  matches 0.69 or more.
-- **patches2.png**, a clone site's screenshot, is refused now. Its pixel
-  font matches the digits poorly (a median of 0.52), and its 2 read as 7,
-  matching 0.411.
-- **Letters** (Wend) are held to the same threshold. Real letters match
-  0.758 or more. Symbols on a Wend tile do worse: of 118 glyphs, 41 are
-  refused (=, -, ~, %, arrows to the right). A + matches I 0.49 to 0.77,
-  depending on how it is printed, and digits match letters (0 as O, 0.878).
+  matches 0.69 or more. No board of any game reads differently for it.
 
 Tested on the real board in both looks, at devicePixelRatio 1 and 2, on a
 game in progress with emptied cells, on the board with x2 tiles in both
