@@ -9,7 +9,8 @@ show where the cells are.
 1. **Tiles:** the clearly coloured pixels are cut into blobs, the groups of
    them that touch. A blob is a tile if it is about as high as wide and fills
    most of its box: a square nearly all of it, a circle 79%. Text, confetti
-   and specks don't.
+   and specks don't. A x2 tile may be a starburst that fills less; it is
+   known by its "×2".
 2. **Board:** tiles whose middles are as high (or as far left) as each
    other's are in one row (column). The step between cells is the most usual
    distance from a tile to the nearest one in its row or column. On a board
@@ -21,7 +22,11 @@ show where the cells are.
    column may be empty: every step between two of them must be a whole
    number of pitches.
 4. **Numbers:** a tile's number is printed in a darker shade of its colour.
-   Its pixels go to the shared glyph reader.
+   Its pixels go to the shared glyph reader, unless they hold a sign: a mark
+   shorter than the digits, or an x. "×2" is a x2 tile.
+5. **Refused:** a tile with any other sign, and a coloured shape on a cell
+   that is no tile, raise ValueError. The shared glyph reader would read a
+   sign as its nearest digit, and a tile not seen would be an empty cell.
 """
 
 from __future__ import annotations
@@ -30,18 +35,23 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..vision import GridGeometry, ImageSource, Lattice, load_rgb, read_number
-from .model import Puzzle
+from ..vision import GridGeometry, ImageSource, Lattice, load_rgb, read_number, split_glyphs
+from .model import DOUBLE, Puzzle, Tile
 
 COLOURFUL = 40  # a pixel whose channels differ by more than this is part of a tile (tiles ~90-200, the card 5)
 MIN_SIDE = 12  # px; anything smaller can't hold a readable number
 ROUND = 0.8  # a tile's box is at most this far from square (height / width)
 FILLED = 0.65  # share of its box a tile fills: a square ~0.98, a circle 0.79, a letter less
+SHAPED = 0.4  # share of its box a x2 tile of another shape fills at least, such as a starburst (~0.55-0.67)
+SHAPE = 0.3  # of the pitch: a coloured shape this big on a cell is either a tile or refused
 ALIGNED = 0.25  # of the usual tile's side: how far apart middles in one row or column may be
 LINKED = 1.5  # steps between cells: neighbours on the board are 1 apart, the next tiles but one 2
 ON_LATTICE = 0.15  # of the pitch: how far a tile's middle may be off its cell's
 MIN_CELLS = 3  # rows and columns; LinkedIn's result screen has a 2x2 board as an icon
 DARKER = 50  # a number's pixels are darker than their tile by more than this
+SPECK = 0.3  # of the tallest mark on a tile: anything shorter is a speck, not a mark
+SIGN = 0.8  # of the tallest mark: a shorter one is a sign, not a digit (the x of x2 is 0.58 of its 2)
+STROKES = 0.8  # share of an x's two diagonals that are ink
 
 
 @dataclass(frozen=True)
@@ -64,8 +74,23 @@ class _Tile:
         return (self.left + self.right) / 2, (self.top + self.bottom) / 2
 
     @property
+    def height(self) -> int:
+        return self.bottom - self.top
+
+    @property
+    def width(self) -> int:
+        return self.right - self.left
+
+    @property
     def side(self) -> int:
-        return min(self.bottom - self.top, self.right - self.left)
+        return min(self.height, self.width)
+
+    @property
+    def box(self) -> tuple[slice, slice]:
+        return slice(self.top, self.bottom), slice(self.left, self.right)
+
+    def within(self, other: _Tile) -> bool:
+        return other.top <= self.top and other.left <= self.left and self.bottom <= other.bottom and self.right <= other.right
 
 
 def read_puzzle(image: ImageSource) -> Puzzle:
@@ -76,7 +101,9 @@ def scan(image: ImageSource) -> Scan:
     rgb = load_rgb(image)
     r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]  # 5x faster than max and min along the colour axis
     colourful = np.maximum(np.maximum(r, g), b) - np.minimum(np.minimum(r, g), b) > COLOURFUL
-    tiles = [tile for tile in _blobs(colourful) if _is_tile(tile, colourful)]
+    blobs = _blobs(colourful)
+    is_tile = [_is_tile(blob, rgb, colourful) for blob in blobs]
+    tiles = [blob for blob, tile in zip(blobs, is_tile) if tile]
     if not tiles:
         raise ValueError("no tiles in the image")
     tolerance = ALIGNED * float(np.median([tile.side for tile in tiles]))
@@ -86,15 +113,23 @@ def scan(image: ImageSource) -> Scan:
     if abs(ys.pitch / xs.pitch - 1) > ON_LATTICE:
         raise ValueError("the tiles are not on a grid of square cells")
     grid = GridGeometry(xs, ys)
-    numbers: list[list[int | None]] = [[None] * grid.cols for _ in range(grid.rows)]
+    numbers: list[list[Tile | None]] = [[None] * grid.cols for _ in range(grid.rows)]
     for tile in tiles:
         x, y = tile.middle
         row, col = _index(y, ys), _index(x, xs)
-        box = slice(tile.top, tile.bottom), slice(tile.left, tile.right)
-        number = _number(rgb[box], colourful[box])
-        if number is None or numbers[row][col] is not None:
+        label = _label(rgb[tile.box], colourful[tile.box])
+        if label is None or numbers[row][col] is not None:
             raise ValueError(f"no single number on the tile in row {row + 1}, column {col + 1}")
-        numbers[row][col] = number
+        if isinstance(label, str) and label != DOUBLE:
+            raise ValueError(f"a tile showing {label} in row {row + 1}, column {col + 1}: only numbers and x2 are known")
+        numbers[row][col] = label
+    for blob, known in zip(blobs, is_tile):
+        cell = _cell(blob.middle, grid)
+        if known or cell is None or max(blob.height, blob.width) < SHAPE * grid.pitch:
+            continue
+        if not any(blob.within(tile) for tile in tiles):  # not a bit of a number's ink
+            row, col = cell
+            raise ValueError(f"a shape that is no tile in row {row + 1}, column {col + 1}: only squares, circles and x2 are known")
     return Scan(Puzzle(tuple(tuple(row) for row in numbers)), grid)
 
 
@@ -137,11 +172,13 @@ def _blobs(mask: np.ndarray) -> list[_Tile]:
     return [_Tile(int(t), int(l), int(b), int(r)) for t, l, b, r in boxes.values()]
 
 
-def _is_tile(tile: _Tile, colourful: np.ndarray) -> bool:
-    height, width = tile.bottom - tile.top, tile.right - tile.left
-    if min(height, width) < MIN_SIDE or min(height, width) < ROUND * max(height, width):
+def _is_tile(blob: _Tile, rgb: np.ndarray, colourful: np.ndarray) -> bool:
+    """Is `blob` about as high as wide, and does it fill most of its box? A x2
+    tile may fill less, as a starburst does, and shows it by its "x2"."""
+    if blob.side < MIN_SIDE or blob.side < ROUND * max(blob.height, blob.width):
         return False
-    return colourful[tile.top : tile.bottom, tile.left : tile.right].mean() >= FILLED
+    filled = colourful[blob.box].mean()
+    return filled >= FILLED or (filled >= SHAPED and _label(rgb[blob.box], colourful[blob.box]) == DOUBLE)
 
 
 def _on_board(tiles: list[_Tile], tolerance: float) -> list[_Tile]:
@@ -203,15 +240,66 @@ def _index(middle: float, lattice: Lattice) -> int:
     return int((middle - lattice.start) // lattice.pitch)
 
 
-def _number(box: np.ndarray, colourful: np.ndarray) -> int | None:
-    """The number on a tile, from the pixels of its box.
+def _cell(middle: tuple[float, float], grid: GridGeometry) -> tuple[int, int] | None:
+    """The cell of `grid` whose middle `middle` is on, if any."""
+    (x, y), cell = middle, []
+    for at, lattice in ((y, grid.ys), (x, grid.xs)):
+        steps = (at - lattice.start) / lattice.pitch - 0.5
+        index = round(steps)
+        if not 0 <= index < lattice.cells or abs(steps - index) > ON_LATTICE:
+            return None
+        cell.append(index)
+    return cell[0], cell[1]
 
-    The tile's own colour is the most common one in it. The number's pixels
-    are those darker than halfway to its darkest: the paler edges of small,
-    blurry digits would close the gap in a 6, which then reads as 8."""
+
+def _label(box: np.ndarray, colourful: np.ndarray) -> Tile | None:
+    """What a tile shows, from the pixels of its box: its number, DOUBLE for
+    "x2", what else it shows if it has a sign ("x", "x4", "an unknown sign"),
+    or None if it shows nothing.
+
+    The tile's own colour is the most common one in it. The ink is the pixels
+    darker than halfway to its darkest: the paler edges of small, blurry
+    digits would close the gap in a 6, which then reads as 8. The ink may be
+    grey: "x2" is printed in a greyish purple.
+
+    The digits of a number are all as tall. A shorter mark is a sign, and so
+    is an x of any height: the result screen's icon shows a tile with only an
+    x on it. An x before the digits stands for "times"; any other sign is not
+    known. A speck is no mark."""
     brightness = box.mean(axis=2)
     colour = np.median(brightness[colourful])
-    darkest = brightness[colourful].min()
+    darkest = brightness.min()
     if darkest > colour - DARKER:
         return None
-    return read_number((colourful & (brightness < (colour + darkest) / 2)).astype(float))
+    ink = brightness < (colour + darkest) / 2
+    marks = split_glyphs(ink, speck=SPECK)
+    tallest = max(mark.shape[0] for _, mark in marks)
+    signs = [i for i, (_, mark) in enumerate(marks) if mark.shape[0] < SIGN * tallest or _is_times(mark)]
+    if not signs:
+        return read_number(ink.astype(float))
+    if signs != [0] or not _is_times(marks[0][1]):
+        return "an unknown sign"
+    left, sign = marks[0]
+    digits = ink.copy()
+    digits[:, : left + sign.shape[1]] = False
+    factor = read_number(digits.astype(float))
+    return "x" if factor is None else DOUBLE if factor == 2 else f"x{factor}"
+
+
+def _is_times(mark: np.ndarray) -> bool:
+    """Is `mark` an x: two strokes from corner to corner, with nothing at the
+    middles of its sides (as a + would have)? A stroke may be a pixel off the
+    diagonal: a small x's ends are blurred away (9 px across on sumbreak6.png)."""
+    height, width = mark.shape
+    if not ROUND <= width / height <= 1 / ROUND:
+        return False
+    near = mark.copy()
+    near[:, 1:] |= mark[:, :-1]
+    near[:, :-1] |= mark[:, 1:]
+    rows = np.arange(height)
+    cols = np.round(rows * (width - 1) / max(1, height - 1)).astype(int)
+    on_strokes = np.concatenate([near[rows, cols], near[rows, width - 1 - cols]]).mean()
+    band_h, band_w = max(1, height // 5), max(1, width // 5)
+    across = slice(2 * height // 5, 3 * height // 5 + 1), slice(2 * width // 5, 3 * width // 5 + 1)
+    sides = mark[:band_h, across[1]], mark[-band_h:, across[1]], mark[across[0], :band_w], mark[across[0], -band_w:]
+    return on_strokes >= STROKES and not any(side.any() for side in sides)
