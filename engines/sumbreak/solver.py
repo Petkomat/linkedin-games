@@ -145,15 +145,18 @@ def _split(tiles: Tiles) -> bool:
 
 
 def _uneven(tiles: Tiles) -> bool:
-    """Do the tiles up to some number t, in a group that touches and has no
-    x2 tile, add up to no whole number of tiles of 2t?
+    """Do the tiles up to some number t, in a group that touches, add up to
+    no whole number of tiles of 2t, even with what its x2 tiles can add?
 
-    Until they reach 2t, such tiles can only merge with each other (the
-    others are bigger), and they can't stay below it, so each group's sum
-    must be made of 2t tiles. Every number is the smallest doubled, which
-    `solve` checks first. A x2 tile could double one of them instead, so a
-    group with one is let be: x2 tiles count as low for every t, which joins
-    the groups they touch."""
+    Until they reach 2t, such tiles can only merge with each other or with a
+    x2 tile next to them (the others are bigger), and they can't stay below
+    it, so each group ends up as tiles of 2t. A merge of two of them keeps
+    the group's sum; a x2 tile adds the number it doubles, the smallest
+    number doubled a few times and at most t. So a group that is r short of
+    a multiple of 2t needs at least as many x2 tiles as r has ones in
+    binary, counted in smallest numbers. x2 tiles count as low for every t,
+    which joins the groups they touch. Every number is the smallest doubled,
+    which `solve` checks first."""
     numbers = _numbers(tiles)
     smallest, largest = min(numbers), max(numbers)
     t = 2 * smallest  # for t = smallest, `_unpaired` asks more
@@ -162,7 +165,9 @@ def _uneven(tiles: Tiles) -> bool:
         while low:
             group = _group(next(iter(low)), low)
             low -= group
-            if all(tiles[cell] != DOUBLE for cell in group) and sum(tiles[cell] for cell in group) % (2 * t):
+            doubles = sum(tiles[cell] == DOUBLE for cell in group)
+            short = -sum(tiles[cell] for cell in group if tiles[cell] != DOUBLE) % (2 * t)
+            if (short // smallest).bit_count() > doubles:
                 return True
         t *= 2
     return False
