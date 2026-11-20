@@ -38,6 +38,8 @@ COLOURFUL = 40  # a pixel whose channels differ by more than this is part of a t
 MIN_SIDE = 12  # px; anything smaller can't hold a readable number
 ROUND = 0.8  # a tile's box is at most this far from square (height / width)
 FILLED = 0.65  # share of its box a tile fills: a square ~0.98, a circle 0.79, a letter less
+SHAPED = 0.4  # share of its box a x2 tile of another shape fills at least, such as a starburst (~0.55-0.67)
+SHAPE = 0.3  # of the pitch: a coloured shape this big on a cell is either a tile or refused
 ALIGNED = 0.25  # of the usual tile's side: how far apart middles in one row or column may be
 LINKED = 1.5  # steps between cells: neighbours on the board are 1 apart, the next tiles but one 2
 ON_LATTICE = 0.15  # of the pitch: how far a tile's middle may be off its cell's
@@ -68,8 +70,23 @@ class _Tile:
         return (self.left + self.right) / 2, (self.top + self.bottom) / 2
 
     @property
+    def height(self) -> int:
+        return self.bottom - self.top
+
+    @property
+    def width(self) -> int:
+        return self.right - self.left
+
+    @property
     def side(self) -> int:
-        return min(self.bottom - self.top, self.right - self.left)
+        return min(self.height, self.width)
+
+    @property
+    def box(self) -> tuple[slice, slice]:
+        return slice(self.top, self.bottom), slice(self.left, self.right)
+
+    def within(self, other: _Tile) -> bool:
+        return other.top <= self.top and other.left <= self.left and self.bottom <= other.bottom and self.right <= other.right
 
 
 def read_puzzle(image: ImageSource) -> Puzzle:
@@ -80,7 +97,9 @@ def scan(image: ImageSource) -> Scan:
     rgb = load_rgb(image)
     r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]  # 5x faster than max and min along the colour axis
     colourful = np.maximum(np.maximum(r, g), b) - np.minimum(np.minimum(r, g), b) > COLOURFUL
-    tiles = [tile for tile in _blobs(colourful) if _is_tile(tile, colourful)]
+    blobs = _blobs(colourful)
+    is_tile = [_is_tile(blob, rgb, colourful) for blob in blobs]
+    tiles = [blob for blob, tile in zip(blobs, is_tile) if tile]
     if not tiles:
         raise ValueError("no tiles in the image")
     tolerance = ALIGNED * float(np.median([tile.side for tile in tiles]))
@@ -90,17 +109,23 @@ def scan(image: ImageSource) -> Scan:
     if abs(ys.pitch / xs.pitch - 1) > ON_LATTICE:
         raise ValueError("the tiles are not on a grid of square cells")
     grid = GridGeometry(xs, ys)
-    numbers: list[list[int | None]] = [[None] * grid.cols for _ in range(grid.rows)]
+    numbers: list[list[Tile | None]] = [[None] * grid.cols for _ in range(grid.rows)]
     for tile in tiles:
         x, y = tile.middle
         row, col = _index(y, ys), _index(x, xs)
-        box = slice(tile.top, tile.bottom), slice(tile.left, tile.right)
-        label = _label(rgb[box], colourful[box])
+        label = _label(rgb[tile.box], colourful[tile.box])
         if label is None or numbers[row][col] is not None:
             raise ValueError(f"no single number on the tile in row {row + 1}, column {col + 1}")
         if isinstance(label, str) and label != DOUBLE:
             raise ValueError(f"a tile showing {label} in row {row + 1}, column {col + 1}: only numbers and x2 are known")
         numbers[row][col] = label
+    for blob, tile in zip(blobs, is_tile):
+        cell = _cell(blob.middle, grid)
+        if tile or cell is None or max(blob.height, blob.width) < SHAPE * grid.pitch:
+            continue
+        if not any(blob.within(tile) for tile in tiles):  # not a speck of a number's ink
+            row, col = cell
+            raise ValueError(f"a shape that is no tile in row {row + 1}, column {col + 1}: only squares, circles and x2 are known")
     return Scan(Puzzle(tuple(tuple(row) for row in numbers)), grid)
 
 
@@ -143,11 +168,13 @@ def _blobs(mask: np.ndarray) -> list[_Tile]:
     return [_Tile(int(t), int(l), int(b), int(r)) for t, l, b, r in boxes.values()]
 
 
-def _is_tile(tile: _Tile, colourful: np.ndarray) -> bool:
-    height, width = tile.bottom - tile.top, tile.right - tile.left
-    if min(height, width) < MIN_SIDE or min(height, width) < ROUND * max(height, width):
+def _is_tile(blob: _Tile, rgb: np.ndarray, colourful: np.ndarray) -> bool:
+    """Is `blob` about as high as wide, and does it fill most of its box? A x2
+    tile may fill less, as a starburst does, and shows it by its "x2"."""
+    if blob.side < MIN_SIDE or blob.side < ROUND * max(blob.height, blob.width):
         return False
-    return colourful[tile.top : tile.bottom, tile.left : tile.right].mean() >= FILLED
+    filled = colourful[blob.box].mean()
+    return filled >= FILLED or (filled >= SHAPED and _label(rgb[blob.box], colourful[blob.box]) == DOUBLE)
 
 
 def _on_board(tiles: list[_Tile], tolerance: float) -> list[_Tile]:
@@ -207,6 +234,18 @@ def _lattice(middles: list[float], tolerance: float) -> Lattice:
 
 def _index(middle: float, lattice: Lattice) -> int:
     return int((middle - lattice.start) // lattice.pitch)
+
+
+def _cell(middle: tuple[float, float], grid: GridGeometry) -> tuple[int, int] | None:
+    """The cell of `grid` whose middle `middle` is on, if any."""
+    (x, y), cell = middle, []
+    for at, lattice in ((y, grid.ys), (x, grid.xs)):
+        steps = (at - lattice.start) / lattice.pitch - 0.5
+        index = round(steps)
+        if not 0 <= index < lattice.cells or abs(steps - index) > ON_LATTICE:
+            return None
+        cell.append(index)
+    return cell[0], cell[1]
 
 
 def _label(box: np.ndarray, colourful: np.ndarray) -> Tile | None:

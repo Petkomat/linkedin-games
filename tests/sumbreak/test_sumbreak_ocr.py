@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
-from engines.sumbreak import Puzzle
+from engines.sumbreak import DOUBLE, Puzzle
 from engines.sumbreak.ocr import read_puzzle, scan
 from tests.helpers import example
 
@@ -98,6 +98,31 @@ def test_reads_a_large_board_with_empty_cells(circles, scale):
 
     assert seen.puzzle == puzzle
     assert seen.grid.center(0, 0) == pytest.approx(((MARGIN + 32) * scale, (MARGIN + 32) * scale), abs=1)
+
+
+X2_BOARD = random_puzzle(6, 6, seed=1, spread=3, doubles=4)
+
+
+@pytest.mark.parametrize(
+    ("circles", "star"),
+    [
+        (False, None),  # a square with a pale diamond
+        (True, 0.85),  # a starburst, whose points may be shallow
+        (True, 0.7),  # or deep: it fills too little of its box to pass as a tile
+    ],
+)
+@pytest.mark.parametrize("scale", [1, 2])
+def test_reads_x2_tiles_on_a_large_board(circles, star, scale):
+    assert read_puzzle(drawn(X2_BOARD, circles, scale, star=star)) == X2_BOARD
+
+
+@pytest.mark.parametrize("scale", [1, 2])
+def test_a_shape_on_a_cell_that_is_no_tile_is_refused_not_read_as_an_empty_cell(scale):
+    # A starburst so spiky that it fills a third of its box, like no tile seen.
+    row, col = next((r, c) for r, line in enumerate(X2_BOARD.numbers) for c, tile in enumerate(line) if tile == DOUBLE)
+
+    with pytest.raises(ValueError, match=f"row {row + 1}, column {col + 1}"):
+        scan(drawn(X2_BOARD, circles=True, scale=scale, star=0.4))
 
 
 def test_coloured_things_above_the_board_are_not_part_of_it():
