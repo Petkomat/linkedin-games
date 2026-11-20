@@ -24,9 +24,9 @@ show where the cells are.
 4. **Numbers:** a tile's number is printed in a darker shade of its colour.
    Its pixels go to the shared glyph reader, unless they hold a sign: a mark
    shorter than the digits, or an x. "×2" is a x2 tile.
-5. **Refused:** a tile with any other sign, and a coloured shape on a cell
-   that is no tile, raise ValueError. The shared glyph reader would read a
-   sign as its nearest digit, and a tile not seen would be an empty cell.
+5. **Refused:** a tile with any other sign, a mark the glyph reader finds
+   like no digit, and a coloured shape on a cell that is no tile, raise
+   ValueError. A tile not seen would be an empty cell.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ..vision import GridGeometry, ImageSource, Lattice, load_rgb, read_number, split_glyphs
+from ..vision import GridGeometry, ImageSource, Lattice, Unreadable, load_rgb, read_number, split_glyphs
 from .model import DOUBLE, Puzzle, Tile
 
 COLOURFUL = 40  # a pixel whose channels differ by more than this is part of a tile (tiles ~90-200, the card 5)
@@ -52,6 +52,7 @@ DARKER = 50  # a number's pixels are darker than their tile by more than this
 SPECK = 0.3  # of the tallest mark on a tile: anything shorter is a speck, not a mark
 SIGN = 0.8  # of the tallest mark: a shorter one is a sign, not a digit (the x of x2 is 0.58 of its 2)
 STROKES = 0.8  # share of an x's two diagonals that are ink
+UNKNOWN_SIGN = "an unknown sign"
 
 
 @dataclass(frozen=True)
@@ -265,7 +266,8 @@ def _label(box: np.ndarray, colourful: np.ndarray) -> Tile | None:
     The digits of a number are all as tall. A shorter mark is a sign, and so
     is an x of any height: the result screen's icon shows a tile with only an
     x on it. An x before the digits stands for "times"; any other sign is not
-    known. A speck is no mark."""
+    known, and neither is a mark as tall as the digits that the glyph reader
+    finds like no digit. A speck is no mark."""
     brightness = box.mean(axis=2)
     colour = np.median(brightness[colourful])
     darkest = brightness.min()
@@ -275,15 +277,19 @@ def _label(box: np.ndarray, colourful: np.ndarray) -> Tile | None:
     marks = split_glyphs(ink, speck=SPECK)
     tallest = max(mark.shape[0] for _, mark in marks)
     signs = [i for i, (_, mark) in enumerate(marks) if mark.shape[0] < SIGN * tallest or _is_times(mark)]
-    if not signs:
-        return read_number(ink.astype(float))
-    if signs != [0] or not _is_times(marks[0][1]):
-        return "an unknown sign"
-    left, sign = marks[0]
+    if signs and (signs != [0] or not _is_times(marks[0][1])):
+        return UNKNOWN_SIGN
     digits = ink.copy()
-    digits[:, : left + sign.shape[1]] = False
-    factor = read_number(digits.astype(float))
-    return "x" if factor is None else DOUBLE if factor == 2 else f"x{factor}"
+    if signs:  # an x: the digits after it are the factor
+        left, sign = marks[0]
+        digits[:, : left + sign.shape[1]] = False
+    try:
+        number = read_number(digits.astype(float))
+    except Unreadable:  # a mark as tall as the digits that is no digit
+        return UNKNOWN_SIGN
+    if not signs:
+        return number
+    return "x" if number is None else DOUBLE if number == 2 else f"x{number}"
 
 
 def _is_times(mark: np.ndarray) -> bool:

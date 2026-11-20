@@ -4,12 +4,20 @@ Each glyph's HOG descriptor (a histogram of gradient directions per zone) is
 compared with templates of the characters it could be. The templates are
 rendered from Pillow's bundled font at several stroke weights, so they don't
 depend on any fonts being installed. Gradient directions are less sensitive to
-stroke weight and font than raw pixels are.
+stroke weight and font than raw pixels are. A 1 is also compared with
+Pillow's 1 with a slab foot added, as LinkedIn prints it on round tiles.
 
 Before comparing, the candidates are narrowed to characters with the glyph's
 number of holes (8 and B have two; 0, 6, 9, A, D, O, P, Q, R and sometimes 4
 have one), which holds in any plain font. That alone separates most of the
 usual mix-ups (3/8, 9/8, 5/6, O/C).
+
+A glyph that matches even its nearest character poorly is refused with
+Unreadable rather than read as that character: a sign or an icon is not a
+digit. The match is the cosine of the two descriptors. The threshold was
+measured on every example board and on symbols painted on Sumbreak and Wend
+tiles (engines/sumbreak/README.md). A symbol that looks like a character,
+such as | or ] for a 1, still reads as that character.
 """
 
 from __future__ import annotations
@@ -31,10 +39,19 @@ HOLES = {
 }  # fmt: skip
 SIDE, ZONES, BINS = 32, 4, 8  # descriptor: SIDExSIDE glyph, ZONESxZONES zones, BINS directions
 STROKE_WEIGHTS = (0, 2, 4, 6)
+MATCH = 0.58  # a glyph matching its nearest character less than this is refused (real digits >= 0.649, a + 0.52)
+
+
+class Unreadable(ValueError):
+    """A glyph that matches no character well enough to be read as one."""
+
+    def __init__(self, nearest: str, match: float):
+        super().__init__(f"a glyph like no character: the nearest, {nearest}, matches only {match:.2f}")
 
 
 def read_number(ink: np.ndarray) -> int | None:
-    """`ink` is a 0..1 map of digit pixels; returns the number or None if blank."""
+    """`ink` is a 0..1 map of digit pixels; returns the number or None if
+    blank. Raises Unreadable if a glyph in it is no digit."""
     glyphs = split_glyphs(ink)
     if not glyphs:
         return None
@@ -42,7 +59,8 @@ def read_number(ink: np.ndarray) -> int | None:
 
 
 def read_letter(ink: np.ndarray) -> str | None:
-    """`ink` is a 0..1 map of one capital letter's pixels; returns it or None if blank."""
+    """`ink` is a 0..1 map of one capital letter's pixels; returns it or None
+    if blank. Raises Unreadable if it is no letter."""
     solid = ink > 0.5
     if not solid.any():
         return None
@@ -68,9 +86,11 @@ def _classify(glyph: np.ndarray, alphabet: str) -> str:
     holes = count_holes(glyph > 0.5, min_area=max(2, round(0.02 * glyph.size)))
     allowed = [ch for ch in alphabet if holes in HOLES[ch]] or list(alphabet)
     descriptor = _hog(glyph)
-    _, best = max(
+    match, best = max(
         (float(descriptor @ template), ch) for ch, template in _templates(alphabet) if ch in allowed
     )
+    if match < MATCH:
+        raise Unreadable(best, match)
     return best
 
 
@@ -87,8 +107,25 @@ def _templates(alphabet: str) -> tuple[tuple[str, np.ndarray], ...]:
                 stroke_width=weight, stroke_fill=255,
             )
             ink = np.asarray(canvas, dtype=float) / 255
-            out.append((ch, _hog(ink[bbox(ink > 0.5)])))
+            ink = ink[bbox(ink > 0.5)]
+            out.append((ch, _hog(ink)))
+            if ch == "1":
+                out.append((ch, _hog(_with_foot(ink))))
     return tuple(out)
+
+
+def _with_foot(one: np.ndarray) -> np.ndarray:
+    """Pillow's 1 with a slab foot, as LinkedIn prints it on round tiles: a
+    bar as thick as the stem across its bottom, reaching as far on each side
+    of the stem as the flag does to its left."""
+    solid = one > 0.5
+    stem = np.flatnonzero(solid[-1])
+    left, right = int(stem[0]), int(stem[-1]) + 1  # the flag starts at column 0
+    height, width = one.shape
+    footed = np.zeros((height, max(width, right + left)))
+    footed[:, :width] = one
+    footed[height - (right - left) :, : right + left] = 1.0
+    return footed
 
 
 def _hog(glyph: np.ndarray) -> np.ndarray:

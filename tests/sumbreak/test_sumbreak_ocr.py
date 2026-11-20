@@ -1,6 +1,8 @@
+import math
+
 import numpy as np
 import pytest
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from engines.sumbreak import DOUBLE, Puzzle
 from engines.sumbreak.ocr import read_puzzle, scan
@@ -72,6 +74,34 @@ def sumbreak5_with_its_top_x2_showing(sign: str) -> Image.Image:
 def test_a_tile_with_a_sign_other_than_x2_is_refused_not_read_as_a_number(sign):
     with pytest.raises(ValueError, match=f"showing {sign} in row 1, column 2"):
         scan(sumbreak5_with_its_top_x2_showing(sign))
+
+
+def sumbreak5_with_its_16_showing(sign: str) -> Image.Image:
+    """sumbreak5.png with the 16 of its bottom left tile rubbed out, and a +
+    or a five-pointed star printed there instead, in the 16's ink.
+
+    The 16 spans x 496-518, y 465-483 on a green tile; its ink is (18, 114, 7)
+    at its darkest."""
+    page = Image.open(example("sumbreak", "sumbreak5.png")).convert("RGB")
+    draw = ImageDraw.Draw(page)
+    draw.rectangle((493, 462, 521, 486), fill=(163, 241, 154))
+    if sign == "+":
+        draw.text((507, 474), "+", fill=(18, 114, 7), font=ImageFont.load_default(size=26), anchor="mm")
+    else:
+        points = [(507 + r * math.sin(k * math.pi / 5), 475 - r * math.cos(k * math.pi / 5)) for k, r in zip(range(10), [10, 4] * 5)]
+        draw.polygon(points, fill=(18, 114, 7))
+    return page
+
+
+@pytest.mark.parametrize("sign", ["+", "star"])
+@pytest.mark.parametrize("scale", [1, 2])
+def test_a_tile_with_a_symbol_as_tall_as_digits_is_refused_not_read_as_the_nearest_digit(sign, scale):
+    # Before, the shared glyph reader answered with its nearest digit: + read as 1.
+    page = sumbreak5_with_its_16_showing(sign)
+    page = page.resize((scale * page.width, scale * page.height), Image.LANCZOS)
+
+    with pytest.raises(ValueError, match="showing an unknown sign in row 3, column 1"):
+        scan(page)
 
 
 @pytest.mark.parametrize(
