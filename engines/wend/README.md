@@ -49,8 +49,7 @@ cell):
 3. **Letters:** the tile's dark pixels go to the shared HOG glyph reader
    (`engines/vision/glyphs.py`). It narrows the candidates by number of holes
    (A, D, O, P, Q, R have one; B has two), then compares them with letters
-   rendered from Pillow's bundled font. A glyph that matches no letter well
-   enough, such as an = or an arrow, is refused, and so is the board.
+   rendered from Pillow's bundled font.
 4. **Word lengths:** below the board, each word is a row of light grey
    squares. The squares in each row are counted; the wide grey Undo button
    isn't square, so it doesn't count. wend1.png is cropped above them, so it

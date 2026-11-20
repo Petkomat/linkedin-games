@@ -12,12 +12,14 @@ number of holes (8 and B have two; 0, 6, 9, A, D, O, P, Q, R and sometimes 4
 have one), which holds in any plain font. That alone separates most of the
 usual mix-ups (3/8, 9/8, 5/6, O/C).
 
-A glyph that matches even its nearest character poorly is refused with
-Unreadable rather than read as that character: a sign or an icon is not a
-digit. The match is the cosine of the two descriptors. The threshold was
-measured on every example board and on symbols painted on Sumbreak and Wend
-tiles (engines/sumbreak/README.md). A symbol that looks like a character,
-such as | or ] for a 1, still reads as that character.
+By default a glyph is read as its nearest digit, however poor the match. A
+caller may ask for a match of at least so much (the cosine of the two
+descriptors, 1 for the same shape): a glyph that matches even its nearest
+digit less is refused with Unreadable, since a sign or an icon is not a
+digit. Sumbreak asks for one. The other games don't: a thin LinkedIn 3 on
+Zip matched only 0.572, too close to a + (up to 0.52) for one threshold to
+serve every game (engines/sumbreak/README.md has the measurements). A symbol
+that looks like a digit, such as | or ] for a 1, reads as that digit anyway.
 """
 
 from __future__ import annotations
@@ -39,28 +41,27 @@ HOLES = {
 }  # fmt: skip
 SIDE, ZONES, BINS = 32, 4, 8  # descriptor: SIDExSIDE glyph, ZONESxZONES zones, BINS directions
 STROKE_WEIGHTS = (0, 2, 4, 6)
-MATCH = 0.58  # a glyph matching its nearest character less than this is refused (real digits >= 0.649, a + 0.52)
 
 
 class Unreadable(ValueError):
-    """A glyph that matches no character well enough to be read as one."""
+    """A glyph that matches no digit well enough to be read as one."""
 
     def __init__(self, nearest: str, match: float):
-        super().__init__(f"a glyph like no character: the nearest, {nearest}, matches only {match:.2f}")
+        super().__init__(f"a glyph like no digit: the nearest, {nearest}, matches only {match:.2f}")
 
 
-def read_number(ink: np.ndarray) -> int | None:
+def read_number(ink: np.ndarray, at_least: float = 0.0) -> int | None:
     """`ink` is a 0..1 map of digit pixels; returns the number or None if
-    blank. Raises Unreadable if a glyph in it is no digit."""
+    blank. Raises Unreadable if a glyph in it matches its nearest digit less
+    than `at_least` (by default never)."""
     glyphs = split_glyphs(ink)
     if not glyphs:
         return None
-    return int("".join(_classify(glyph, DIGITS) for _, glyph in glyphs))
+    return int("".join(_classify(glyph, DIGITS, at_least) for _, glyph in glyphs))
 
 
 def read_letter(ink: np.ndarray) -> str | None:
-    """`ink` is a 0..1 map of one capital letter's pixels; returns it or None
-    if blank. Raises Unreadable if it is no letter."""
+    """`ink` is a 0..1 map of one capital letter's pixels; returns it or None if blank."""
     solid = ink > 0.5
     if not solid.any():
         return None
@@ -82,14 +83,14 @@ def split_glyphs(ink: np.ndarray, speck: float = 0.6) -> list[tuple[int, np.ndar
     return [(left, glyph) for left, glyph in glyphs if glyph.shape[0] >= speck * tallest]
 
 
-def _classify(glyph: np.ndarray, alphabet: str) -> str:
+def _classify(glyph: np.ndarray, alphabet: str, at_least: float = 0.0) -> str:
     holes = count_holes(glyph > 0.5, min_area=max(2, round(0.02 * glyph.size)))
     allowed = [ch for ch in alphabet if holes in HOLES[ch]] or list(alphabet)
     descriptor = _hog(glyph)
     match, best = max(
         (float(descriptor @ template), ch) for ch, template in _templates(alphabet) if ch in allowed
     )
-    if match < MATCH:
+    if match < at_least:
         raise Unreadable(best, match)
     return best
 

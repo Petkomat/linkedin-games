@@ -1,7 +1,6 @@
 import pytest
 
 from engines.patches import Root, Shape, read_puzzle
-from engines.vision import Unreadable, glyphs
 from tests.helpers import example
 
 
@@ -36,19 +35,10 @@ def test_finds_the_root_cells_despite_a_half_drawn_patch():
         ),
     ],
 )
-def test_reads_the_badge_shapes(screenshot, shapes, monkeypatch):
-    # patches2.png is from a clone site whose pixel font is like no digit
-    # (see the next test): its shapes are read with every digit let through.
-    monkeypatch.setattr(glyphs, "MATCH", 0.0)
+def test_reads_the_badge_shapes(screenshot, shapes):
     puzzle = read_puzzle(example("patches", screenshot))
 
     assert {(r.row, r.col): r.shape for r in puzzle.roots} == shapes
-
-
-def test_numbers_in_a_font_like_no_digits_are_refused_not_misread():
-    # patches2.png is from a clone site with a pixel font, whose 2 read as 7.
-    with pytest.raises(Unreadable):
-        read_puzzle(example("patches", "patches2.png"))
 
 
 def test_reads_the_whole_patches1_puzzle():

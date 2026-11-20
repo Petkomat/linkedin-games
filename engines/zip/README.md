@@ -51,7 +51,6 @@ the path. Trying the tightest step first only helped on 10×10 (39 s → 4 s).
 2. **Numbers:** white digits on a black disc. The clearly white pixels inside
    the disc go to the shared glyph reader. The grey edges of the strokes are
    left out, because they close the gap in a blurry 6 so that it reads as 8.
-   A glyph that matches no digit well enough is refused, and so is the board.
 3. **Walls:** thick black bars across a border. Over 80% of the pixels around
    a wall's border midpoint are black, against 0% elsewhere. Grid lines are
    grey and the drawn path is coloured.
