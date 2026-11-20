@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from html.parser import HTMLParser
@@ -16,6 +17,55 @@ from .watcher import incident
 
 HUB = "https://www.linkedin.com/games/"
 MARK = re.compile(r"<!-- scout (\{.*?\}) -->")
+
+# Lines of a "How to play" dialog that aren't rules: what LinkedIn adds for
+# screen readers, and the dialog's buttons (matched whole, in any case).
+SCREEN_READER = re.compile(r"Dialog content (start|end)\.|\d[\d,]*\+? notifications?", re.IGNORECASE)
+BUTTONS = {"play", "play game", "start", "start game", "let's play", "continue", "resume", "resume game",
+           "back to game", "got it", "ok", "done", "next", "back", "skip", "close", "dismiss"}  # fmt: skip
+POLL = 0.5  # s between two reads of a "How to play" dialog
+STILL = 3  # reads in a row with the same rules before the dialog counts as loaded
+
+
+def rules_lines(dialog: str) -> list[str]:
+    """The rules in the text of a game's "How to play" dialog: its heading
+    (the first line) and the lines after it, without blank lines, screen-reader
+    lines or button labels. Empty if nothing is left after the heading: the
+    dialog hasn't loaded its rules (yet)."""
+    lines = (" ".join(line.split()) for line in dialog.splitlines())
+    kept = [line for line in lines if line and not SCREEN_READER.fullmatch(line) and line.lower() not in BUTTONS]
+    return kept if len(kept) > 1 else []
+
+
+def wait_for_rules(
+    read: Callable[[], str],
+    seconds: float,
+    clock: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> str:
+    """The text of a "How to play" dialog once it has loaded: `read()` again
+    every POLL s until it has rules and they have been the same STILL reads in
+    a row. LinkedIn shows the dialog's heading first and its rules a moment
+    later. At the limit of `seconds`, the last text read."""
+    deadline = clock() + seconds
+    text = read()
+    same = 1
+    while not (same >= STILL and rules_lines(text)) and clock() + POLL <= deadline:
+        sleep(POLL)
+        latest = read()
+        same = same + 1 if rules_lines(latest) == rules_lines(text) else 1
+        text = latest
+    return text
+
+
+def how_to_play(dialog: str) -> str:
+    """The rules part of a new game's task, from the text of its "How to play"
+    dialog ("" if there was no dialog)."""
+    lines = rules_lines(dialog)
+    if not lines:
+        return "The Scout couldn't read the rules. Open the game as a guest and click its ? button."
+    quoted = "\n>\n".join(f"> {line}" for line in lines)
+    return f"## How to play, as LinkedIn shows a guest\n\n{quoted}"
 
 
 @dataclass(frozen=True)
