@@ -38,6 +38,25 @@ judges your work after you; at most three reviews, then the owner decides.
    branch with `git push -u origin HEAD`. The orchestrator opens the PR from
    your summary.
 
+## Conflicts with main
+
+When the owner or the Operator asks you to resolve conflicts with main:
+
+- **The branch already has a PR** (`gh pr view` shows it): merge main in, so
+  the commits the Reviewer saw stay as they are. `git fetch origin`, then
+  `git merge --no-edit origin/main`. Fix each file `git status` lists as
+  conflicted (`git checkout origin/main -- <file>` takes main's side whole),
+  `git add` it, and conclude with `git commit --no-edit`. Run `uv run pytest`
+  and push as usual with `git push origin HEAD`. Never rebase a branch that
+  has a PR: that needs a force push.
+- **No PR yet**: you may rebase instead, `git rebase origin/main`. After
+  fixing a commit's conflicts, `git add` the files, `git commit --no-edit`,
+  then `git rebase --continue`.
+
+Use `--no-edit` as shown: a plain `git commit` or `git rebase --continue`
+opens an editor that nobody is there to close. Merging main into your branch
+is fine; merging into main never is, and never push to main.
+
 End with status **ready**, a summary for the PR (what you built, how it's
 tested, what the guest play showed, what you assumed), and a short PR title.
 Or status **stuck** with exactly what you need from the owner, for example a
