@@ -99,7 +99,7 @@ def play(player: Player, game: Game, output: Path, board_wait: float, started: d
     solution.write_text(report(game, seen.puzzle, started), encoding="utf-8")
     print(f"Solved; the solution is in {solution}. Playing {len(actions)} moves...")
     player.perform(actions, seen.grid)
-    final = player.final_screen()
+    final = player.final_screen(game)
     final.save(output)
     if looks_blank(final):
         print(f"The page still looked blank {player.result_wait.limit:.0f} s after the last move.")
