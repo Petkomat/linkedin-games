@@ -16,8 +16,8 @@ tile, which shows in one of four ways:
     double up to it, or a x2 tile: its neighbours only grow or leave, so it
     is stuck;
   * the smallest tiles can't each get a partner of their own;
-  * the tiles up to some number, in a group that touches and has no x2 tile,
-    can't add up to tiles of twice that number.
+  * the tiles up to some number, in a group that touches, can't add up to
+    tiles of twice that number, even with what the group's x2 tiles add.
 
 The search branches on the unit with the fewest options: one with none is a
 dead end, and one with a single option is forced. Boards it has already seen

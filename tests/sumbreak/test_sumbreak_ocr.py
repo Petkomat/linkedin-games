@@ -33,11 +33,16 @@ def test_an_emptied_cell_is_no_tile():
     assert read_puzzle(example("sumbreak", "sumbreak4.png")) == SUMBREAK4
 
 
+@pytest.mark.parametrize(
+    "screenshot",
+    [
+        "sumbreak5.png",  # "×2" in a greyish purple on a pale diamond, the × smaller than the 2
+        "sumbreak6.png",  # the same board drawn with circles: x2 is a scalloped circle, its × 9 px across
+    ],
+)
 @pytest.mark.parametrize("scale", [1, 2])
-def test_reads_x2_tiles_as_tiles_that_double_not_as_a_2(scale):
-    # Its "x2" is printed in a greyish purple on a pale diamond, and the x is
-    # smaller than the 2.
-    page = Image.open(example("sumbreak", "sumbreak5.png"))
+def test_reads_x2_tiles_as_tiles_that_double_not_as_a_2(screenshot, scale):
+    page = Image.open(example("sumbreak", screenshot))
     page = page.resize((scale * page.width, scale * page.height), Image.LANCZOS)
 
     assert read_puzzle(page) == SUMBREAK5

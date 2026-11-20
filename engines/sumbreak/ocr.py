@@ -9,7 +9,8 @@ show where the cells are.
 1. **Tiles:** the clearly coloured pixels are cut into blobs, the groups of
    them that touch. A blob is a tile if it is about as high as wide and fills
    most of its box: a square nearly all of it, a circle 79%. Text, confetti
-   and specks don't.
+   and specks don't. A x2 tile may be a starburst that fills less; it is
+   known by its "×2".
 2. **Board:** tiles whose middles are as high (or as far left) as each
    other's are in one row (column). The step between cells is the most usual
    distance from a tile to the nearest one in its row or column. On a board
@@ -21,7 +22,11 @@ show where the cells are.
    column may be empty: every step between two of them must be a whole
    number of pitches.
 4. **Numbers:** a tile's number is printed in a darker shade of its colour.
-   Its pixels go to the shared glyph reader.
+   Its pixels go to the shared glyph reader, unless they hold a sign: a mark
+   shorter than the digits, or an x. "×2" is a x2 tile.
+5. **Refused:** a tile with any other sign, and a coloured shape on a cell
+   that is no tile, raise ValueError. The shared glyph reader would read a
+   sign as its nearest digit, and a tile not seen would be an empty cell.
 """
 
 from __future__ import annotations
@@ -119,11 +124,11 @@ def scan(image: ImageSource) -> Scan:
         if isinstance(label, str) and label != DOUBLE:
             raise ValueError(f"a tile showing {label} in row {row + 1}, column {col + 1}: only numbers and x2 are known")
         numbers[row][col] = label
-    for blob, tile in zip(blobs, is_tile):
+    for blob, known in zip(blobs, is_tile):
         cell = _cell(blob.middle, grid)
-        if tile or cell is None or max(blob.height, blob.width) < SHAPE * grid.pitch:
+        if known or cell is None or max(blob.height, blob.width) < SHAPE * grid.pitch:
             continue
-        if not any(blob.within(tile) for tile in tiles):  # not a speck of a number's ink
+        if not any(blob.within(tile) for tile in tiles):  # not a bit of a number's ink
             row, col = cell
             raise ValueError(f"a shape that is no tile in row {row + 1}, column {col + 1}: only squares, circles and x2 are known")
     return Scan(Puzzle(tuple(tuple(row) for row in numbers)), grid)
@@ -293,13 +298,17 @@ def _marks(ink: np.ndarray) -> list[tuple[int, np.ndarray]]:
 
 def _is_times(mark: np.ndarray) -> bool:
     """Is `mark` an x: two strokes from corner to corner, with nothing at the
-    middles of its sides (as a + would have)?"""
+    middles of its sides (as a + would have)? A stroke may be a pixel off the
+    diagonal: a small x's ends are blurred away (9 px across on sumbreak6.png)."""
     height, width = mark.shape
     if not ROUND <= width / height <= 1 / ROUND:
         return False
+    near = mark.copy()
+    near[:, 1:] |= mark[:, :-1]
+    near[:, :-1] |= mark[:, 1:]
     rows = np.arange(height)
     cols = np.round(rows * (width - 1) / max(1, height - 1)).astype(int)
-    on_strokes = np.concatenate([mark[rows, cols], mark[rows, width - 1 - cols]]).mean()
+    on_strokes = np.concatenate([near[rows, cols], near[rows, width - 1 - cols]]).mean()
     band_h, band_w = max(1, height // 5), max(1, width // 5)
     across = slice(2 * height // 5, 3 * height // 5 + 1), slice(2 * width // 5, 3 * width // 5 + 1)
     sides = mark[:band_h, across[1]], mark[-band_h:, across[1]], mark[across[0], :band_w], mark[across[0], -band_w:]
