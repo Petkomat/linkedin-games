@@ -244,6 +244,10 @@ the assignee of work it did.
 - Each role has a list of tools it may use. Anything else is refused, never
   asked (`--permission-mode dontAsk`). PowerShell and your MCP servers are
   off.
+- The Developer may push only with `git push -u origin HEAD` or
+  `git push origin HEAD`, so its permissions refuse a force push, which would
+  replace the commits the Reviewer saw; it isn't only an instruction. The
+  Operator keeps `--force-with-lease` for its rebase onto main.
 - Agents act as the bot account (its token, its git identity). Branch
   protection means nothing merges without your approval and a green `tests`
   check.

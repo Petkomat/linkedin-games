@@ -36,20 +36,23 @@ judges your work after you; at most three reviews, then the owner decides.
    are wrong, fix moves.py and its control model together.
 8. **Finish**: `uv run pytest` must pass. Commit in small steps and push your
    branch with `git push -u origin HEAD`. The orchestrator opens the PR from
-   your summary.
+   your summary. That and `git push origin HEAD` are the only pushes your
+   role allows: a force push is refused, so never amend or rebase commits
+   you've pushed, or the next push fails.
 
 ## Conflicts with main
 
 When the owner or the Operator asks you to resolve conflicts with main:
 
-- **The branch already has a PR** (`gh pr view` shows it): merge main in, so
-  the commits the Reviewer saw stay as they are. `git fetch origin`, then
+- **The branch is on GitHub** (it has a PR, or after `git fetch origin`,
+  `git log -1 origin/<branch>` finds it): merge main in, so the commits the
+  Reviewer saw stay as they are. `git fetch origin`, then
   `git merge --no-edit origin/main`. Fix each file `git status` lists as
   conflicted (`git checkout origin/main -- <file>` takes main's side whole),
   `git add` it, and conclude with `git commit --no-edit`. Run `uv run pytest`
   and push as usual with `git push origin HEAD`. Never rebase a branch that
-  has a PR: that needs a force push.
-- **No PR yet**: you may rebase instead, `git rebase origin/main`. After
+  is on GitHub: that needs a force push, which your role refuses.
+- **Never pushed**: you may rebase instead, `git rebase origin/main`. After
   fixing a commit's conflicts, `git add` the files, `git commit --no-edit`,
   then `git rebase --continue`.
 

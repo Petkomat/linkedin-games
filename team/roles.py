@@ -74,8 +74,10 @@ DEVELOPER = Role(
     allowed=(
         "Edit", "Write", "Skill",
         *bash("uv run", "uv sync", "gh run download", "gh run view"), *READ_SHELL,
-        *READ_GIT, *bash("git add", "git commit", "git push", "git restore", "git rm", "git mv", "git fetch"),
+        *READ_GIT, *bash("git add", "git commit", "git restore", "git rm", "git mv", "git fetch"),
         *bash("git merge", "git rebase", "git merge-tree", "git checkout"),  # to resolve conflicts with main
+        # These two pushes exactly, so never a force push, which would replace the commits the Reviewer saw.
+        "Bash(git push -u origin HEAD)", "Bash(git push origin HEAD)",
     ),
     key="status", answers=("ready", "stuck"),
     texts=("summary", "title"), required=("summary",),
