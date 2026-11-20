@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
@@ -40,6 +41,32 @@ def test_reads_x2_tiles_as_tiles_that_double_not_as_a_2(scale):
     page = page.resize((scale * page.width, scale * page.height), Image.LANCZOS)
 
     assert read_puzzle(page) == SUMBREAK5
+
+
+def sumbreak5_with_its_top_x2_showing(sign: str) -> Image.Image:
+    """sumbreak5.png with the 2 of its top x2 tile rubbed out, and for "x4"
+    the 4 of the tile below printed there instead, in the x2's ink.
+
+    The 2 spans x 643-654, y 201-219 on a pale diamond; the 4 below spans
+    x 633-647, y 333-351, and its ink is darker than 122."""
+    pixels = np.asarray(Image.open(example("sumbreak", "sumbreak5.png")).convert("RGB")).copy()
+    four = pixels[333:352, 633:648].mean(axis=2) < 122
+    pixels[199:222, 641:658] = (230, 191, 255)
+    if sign == "x4":
+        pixels[201:220, 643:658][four] = (87, 55, 94)
+    return Image.fromarray(pixels)
+
+
+@pytest.mark.parametrize(
+    "sign",
+    [
+        "x",  # as the result screen's icon shows it (sumbreak-result1.png)
+        "x4",  # no board has shown one, so what it does is not known
+    ],
+)
+def test_a_tile_with_a_sign_other_than_x2_is_refused_not_read_as_a_number(sign):
+    with pytest.raises(ValueError, match=f"showing {sign} in row 1, column 2"):
+        scan(sumbreak5_with_its_top_x2_showing(sign))
 
 
 @pytest.mark.parametrize(

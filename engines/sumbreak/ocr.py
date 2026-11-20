@@ -211,17 +211,18 @@ def _index(middle: float, lattice: Lattice) -> int:
 
 def _label(box: np.ndarray, colourful: np.ndarray) -> Tile | None:
     """What a tile shows, from the pixels of its box: its number, DOUBLE for
-    "x2", the text of any other sign it has ("x3", "?"), or None if it shows
-    nothing.
+    "x2", what else it shows if it has a sign ("x", "x4", "an unknown sign"),
+    or None if it shows nothing.
 
     The tile's own colour is the most common one in it. The ink is the pixels
     darker than halfway to its darkest: the paler edges of small, blurry
     digits would close the gap in a 6, which then reads as 8. The ink may be
     grey: "x2" is printed in a greyish purple.
 
-    The digits of a number are all as tall. A shorter mark before them is a
-    sign: an x stands for "times", and anything else is not known. A speck
-    is no mark."""
+    The digits of a number are all as tall. A shorter mark is a sign, and so
+    is an x of any height: the result screen's icon shows a tile with only an
+    x on it. An x before the digits stands for "times"; any other sign is not
+    known. A speck is no mark."""
     brightness = box.mean(axis=2)
     colour = np.median(brightness[colourful])
     darkest = brightness.min()
@@ -231,16 +232,16 @@ def _label(box: np.ndarray, colourful: np.ndarray) -> Tile | None:
     marks = _marks(ink)
     tallest = max(mark.shape[0] for _, mark in marks)
     marks = [(left, mark) for left, mark in marks if mark.shape[0] >= SPECK * tallest]
-    signs = [i for i, (_, mark) in enumerate(marks) if mark.shape[0] < SIGN * tallest]
+    signs = [i for i, (_, mark) in enumerate(marks) if mark.shape[0] < SIGN * tallest or _is_times(mark)]
     if not signs:
         return read_number(ink.astype(float))
     if signs != [0] or not _is_times(marks[0][1]):
-        return "?"
+        return "an unknown sign"
     left, sign = marks[0]
     digits = ink.copy()
     digits[:, : left + sign.shape[1]] = False
     factor = read_number(digits.astype(float))
-    return "?" if factor is None else DOUBLE if factor == 2 else f"x{factor}"
+    return "x" if factor is None else DOUBLE if factor == 2 else f"x{factor}"
 
 
 def _marks(ink: np.ndarray) -> list[tuple[int, np.ndarray]]:
