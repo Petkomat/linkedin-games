@@ -310,3 +310,65 @@ def test_the_second_look_comes_at_the_limit_at_the_latest():
 
     assert taken == pytest.approx(0.3), "not the 5 s of settling"
     assert same(final, board())
+
+
+class TimedFrames(Frames):
+    """Frames whose screenshots are taken on `clock`: `looks` says when each
+    one was taken, and each takes `each_look_takes` s, as taking and decoding
+    a 3747x1955 screenshot can on a busy machine."""
+
+    def __init__(self, *frames: Image.Image, clock: StandInClock, each_look_takes: float) -> None:
+        super().__init__(*frames)
+        self.clock = clock
+        self.each_look_takes = each_look_takes
+        self.looks: list[float] = []
+
+    def screenshot(self) -> bytes:
+        self.looks.append(self.clock.now())
+        self.clock.spend(self.each_look_takes)
+        return super().screenshot()
+
+
+# On a busy machine, taking and decoding one screenshot can take seconds.
+
+
+def test_a_first_look_that_ends_after_the_limit_is_taken_as_it_is():
+    clock = StandInClock()
+    page = TimedFrames(blank_page(), board(), clock=clock, each_look_takes=3)
+
+    final = Player(page, result_wait=ResultWait(limit=4), clock=clock).final_screen()
+
+    assert page.looks == [2], "no look after the limit"
+    assert clock.now() == 5
+    assert same(final, blank_page())
+
+
+def test_slow_looks_at_a_blank_page_still_stop_at_the_limit():
+    clock = StandInClock()
+    page = TimedFrames(blank_page(), clock=clock, each_look_takes=0.5)
+
+    final = Player(page, result_wait=ResultWait(limit=6), clock=clock).final_screen()
+
+    assert page.looks == [2, 3.5, 5, 6], "a second's wait between looks, and the last wait cut short by the limit"
+    assert same(final, blank_page())
+
+
+def test_a_screen_that_shows_up_at_the_limit_on_a_busy_machine_is_taken_without_a_second_look():
+    clock = StandInClock()
+    page = TimedFrames(blank_page(), board(), clock=clock, each_look_takes=1.5)
+
+    final = Player(page, result_wait=ResultWait(limit=4), clock=clock).final_screen()
+
+    assert page.looks == [2, 4], "the board showed at 4 s, and that look took until 5.5 s"
+    assert same(final, board())
+
+
+def test_on_a_busy_machine_the_second_look_comes_a_second_after_the_first_one_ends():
+    clock = StandInClock()
+    page = TimedFrames(board(), clock=clock, each_look_takes=1.5)
+
+    final = Player(page, result_wait=ResultWait(), clock=clock).final_screen()
+
+    assert page.looks == [2, 4.5], "the first look took until 3.5 s"
+    assert clock.now() == 6
+    assert same(final, board())
