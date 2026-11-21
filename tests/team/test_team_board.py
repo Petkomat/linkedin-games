@@ -236,6 +236,20 @@ def test_the_page_is_served_whole_in_light_and_dark(board):
     assert "prefers-color-scheme: dark" in page
 
 
+def test_a_run_shows_the_effort_recorded_beside_its_prompt_and_auto_without_one(board, tmp_path):
+    write_log(tmp_path, "20261120-112334-operator34", stream(ended(structured_output=OPERATOR_VERDICT)))
+    write_log(tmp_path, "20261120-120000-reviewer35", stream(ended(structured_output=OPERATOR_VERDICT)))
+    (tmp_path / "20261120-112334-operator34.meta.json").write_text(json.dumps({"model": "sonnet", "effort": "high"}), encoding="utf-8")
+
+    assert recent(board, "20261120-112334-operator34")["effort"] == "high"
+    assert recent(board, "20261120-120000-reviewer35")["effort"] == "auto"  # an older run, with no meta file
+    assert json.loads(get(board + "/state.json"))["agents"][0]["effort"] == "auto"
+
+
+def test_the_page_draws_an_effort_pill_beside_the_model_pill(board):
+    assert "${model(r.model)}${effort(r.effort)}" in get(board + "/")
+
+
 def test_unknown_runs_and_paths_are_not_found(board):
     for path in ("/log/nobody", "/log/..%2F..%2Fsecret", "/nothing"):
         with pytest.raises(urllib.error.HTTPError) as error:

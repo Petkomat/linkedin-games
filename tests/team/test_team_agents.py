@@ -4,10 +4,13 @@ its stream of output means when it ends."""
 from __future__ import annotations
 
 import json
+import os
+import sys
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
-from team.agents import command, outcome
+from team.agents import ClaudeAgents, command, outcome
 from team.model import Failed, Job, UsageLimited, Verdict
 from team.roles import BY_NAME, DEVELOPER, OPERATOR, PROJECT_MANAGER, REVIEWER
 
@@ -164,6 +167,27 @@ def test_the_project_manager_may_split_a_task_into_parts_for_the_developer_or_th
     part = schema["properties"]["parts"]["items"]
     assert part["required"] == ["title", "body", "stage"]
     assert part["properties"]["stage"]["enum"] == ["develop", "ops"]
+
+
+def test_a_role_with_no_chosen_effort_is_auto_and_passes_no_effort_flag():
+    assert {role.effort for role in BY_NAME.values()} == {"auto"}
+    assert "--effort" not in command(job(), DEVELOPER)
+
+
+def test_a_role_with_an_explicit_effort_passes_it_to_the_cli():
+    assert option(command(job(), replace(DEVELOPER, effort="high")), "--effort") == "high"
+
+
+def test_a_new_run_records_its_model_and_effort_beside_its_prompt(tmp_path):
+    agents = ClaudeAgents(tmp_path, tmp_path / "trees", tmp_path / "logs", dict(os.environ), claude=sys.executable)
+    agents.worktree = lambda issue, branch: tmp_path  # type: ignore[method-assign]
+
+    run = agents.start(job())
+    agents.runs[run].wait()
+
+    meta = json.loads((tmp_path / "logs" / f"{run}.meta.json").read_text(encoding="utf-8"))
+    assert meta == {"role": "developer", "model": "opus", "effort": "auto"}
+    assert (tmp_path / "logs" / f"{run}.prompt.md").read_text(encoding="utf-8") == "Build it."
 
 
 def test_a_first_run_names_its_session_and_a_later_one_resumes_it():

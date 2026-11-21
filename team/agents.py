@@ -18,6 +18,7 @@ from .roles import BY_NAME, Role
 
 # The owner wants no Claude attribution on commits or PRs.
 SETTINGS = {"attribution": {"commit": "", "pr": ""}, "includeCoAuthoredBy": False}
+AUTO = "auto"  # the effort of a role with none chosen
 LIMIT_TEXT = re.compile(r"usage limit|limit reached|rate limit", re.IGNORECASE)
 
 
@@ -34,6 +35,8 @@ def command(job: Job, role: Role, claude: str = "claude") -> list[str]:
         "--strict-mcp-config",  # none of the owner's MCP servers (Notion and the like)
         "--disallowedTools", "PowerShell",  # one shell, Bash, which the role's rules cover
     ]  # fmt: skip
+    if role.effort != AUTO:  # "auto" is no flag: the CLI picks the level
+        argv += ["--effort", role.effort]
     argv += ["--resume", job.session] if job.resume else ["--session-id", job.session]
     if role.allowed:
         argv += ["--allowedTools", *role.allowed]  # last: it takes every argument up to the next option
@@ -79,6 +82,8 @@ class ClaudeAgents:
         self.logs.mkdir(parents=True, exist_ok=True)
         prompt = self.logs / f"{agent}.prompt.md"
         prompt.write_text(job.prompt, encoding="utf-8")
+        meta = {"role": role.name, "model": role.model, "effort": role.effort}
+        (self.logs / f"{agent}.meta.json").write_text(json.dumps(meta), encoding="utf-8", newline="\n")
         cwd = self.worktree(job.issue, job.branch) if job.branch else self.main()
         with prompt.open("rb") as stdin, self.log(agent).open("wb") as stdout, (self.logs / f"{agent}.err").open("wb") as stderr:
             self.runs[agent] = subprocess.Popen(command(job, role, self.claude), cwd=cwd, stdin=stdin, stdout=stdout, stderr=stderr, env=self.env)

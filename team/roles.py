@@ -21,6 +21,7 @@ class Role:
     name: str
     stage: str  # the stage whose tasks this role works on
     model: str
+    effort: str  # "auto": none chosen, so the CLI uses the owner's default; else low, medium, high, xhigh or max
     slots: int  # agents of this role that may run at once
     timeout: timedelta
     worktree: bool  # works in the task's own worktree (else in the main checkout, read-only)
@@ -64,13 +65,13 @@ READ_SHELL = bash(
 )  # every role may look, tickets and PRs included
 
 PROJECT_MANAGER = Role(
-    "project-manager", TRIAGE, "sonnet", 1, timedelta(minutes=20), worktree=False,
+    "project-manager", TRIAGE, "sonnet", "auto", 1, timedelta(minutes=20), worktree=False,
     allowed=(*bash("git log"), *READ_SHELL),
     key="decision", answers=(DEVELOP, OPS, SPLIT, WAIT, DECLINED, NEEDS_HUMAN, "done"),
     texts=("comment",), required=("comment",), lists=(("parts", PART),), extras=WAIT_FIELDS,
 )
 DEVELOPER = Role(
-    "developer", DEVELOP, "opus", 2, timedelta(hours=4), worktree=True,
+    "developer", DEVELOP, "opus", "auto", 2, timedelta(hours=4), worktree=True,
     allowed=(
         "Edit", "Write", "Skill",
         *bash("uv run", "uv sync", "gh run download", "gh run view"), *READ_SHELL,
@@ -83,13 +84,13 @@ DEVELOPER = Role(
     texts=("summary", "title"), required=("summary",),
 )
 REVIEWER = Role(
-    "reviewer", REVIEW, "opus", 2, timedelta(hours=1), worktree=True,
+    "reviewer", REVIEW, "opus", "auto", 2, timedelta(hours=1), worktree=True,
     allowed=(*bash("uv run", "uv sync", "git fetch"), *READ_GIT, *READ_SHELL),
     key="decision", answers=("approve", "changes"),
     texts=("review",), required=("review",),
 )
 OPERATOR = Role(
-    "operator", OPS, "sonnet", 1, timedelta(hours=1), worktree=True,
+    "operator", OPS, "sonnet", "auto", 1, timedelta(hours=1), worktree=True,
     allowed=("Edit", "Write", *bash("git", "uv run", "uv sync", "gh pr checks", "gh run view", "gh run list", "gh run watch"), *READ_SHELL),
     key="status", answers=("ready", "developer", "stuck"),
     texts=("summary", "title"), required=("summary",),

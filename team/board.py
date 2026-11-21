@@ -212,6 +212,13 @@ def serve(state: Callable[[], dict[str, Any]], logs: Path, port: int = 8765, rep
         path = logs / f"{run}{suffix}"
         return path.read_text(encoding="utf-8", errors="replace") if RUN.match(run) and path.is_file() else None
 
+    def effort(run: str) -> str:
+        """The effort a run was started with; runs from before it was recorded were "auto"."""
+        try:
+            return str(json.loads(read(run, ".meta.json") or "{}").get("effort") or "auto")
+        except (json.JSONDecodeError, AttributeError):
+            return "auto"
+
     recaps: dict[str, tuple[tuple[int, int], dict[str, Any]]] = {}  # by run: its log's stamp, and its recap
     lock = threading.Lock()
 
@@ -236,12 +243,12 @@ def serve(state: Callable[[], dict[str, Any]], logs: Path, port: int = 8765, rep
             agents = []
             for agent in now["agents"]:
                 found = recapped(agent["agent"])
-                agents.append({**agent, "last": found["last"], "model": found["model"]})
+                agents.append({**agent, "last": found["last"], "model": found["model"], "effort": effort(agent["agent"])})
             recent = []
             for run in (p.stem for p in runs):
                 found = recapped(run)
                 status = found["status"] or ("running" if run in working else "stopped")
-                recent.append({"agent": run, **run_name(run), **found, "status": status})
+                recent.append({"agent": run, **run_name(run), **found, "effort": effort(run), "status": status})
             for gone in set(recaps) - working - {p.stem for p in runs}:
                 del recaps[gone]
         return {**now, "agents": agents, "recent": recent, "repo": repo}
@@ -430,6 +437,7 @@ const pill = (text, hex, kind = "") => `<span class="pill ${kind}" style="--c:${
 const status = s => pill(s, colour(s), s === "running" ? "status working" : "status");
 const model = m => !m ? "" : pill(String(m).replace(/^claude-/, "").replace(/-(\d+)-(\d+)(-\d{8})?$/, " $1.$2"),
   COLOURS[/opus/.test(m) ? "purple" : /sonnet/.test(m) ? "orange" : /haiku/.test(m) ? "teal" : "grey"], "model");
+const effort = e => pill(e || "auto", COLOURS.grey, "effort");
 const roleName = r => String(r || "").split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
 
 function card(run, inner) {
@@ -437,12 +445,12 @@ function card(run, inner) {
 }
 const working = a => card(a,
   `<div class="head"><span class="role">${esc(roleName(a.role))}</span>${link(a.issue)}<span class="task">${esc(a.title)}</span>
-   <span class="pills">${pill(a.stage, colour(a.stage))}${model(a.model)}${pill(`working ${time(a.seconds)}`, COLOURS.blue, "status working")}</span></div>
+   <span class="pills">${pill(a.stage, colour(a.stage))}${model(a.model)}${effort(a.effort)}${pill(`working ${time(a.seconds)}`, COLOURS.blue, "status working")}</span></div>
    <div class="step" title="${esc(a.last)}">${esc(a.last || "starting…")}</div>`);
 const ran = r => card(r,
   `<div class="head"><span class="role">${esc(r.role ? roleName(r.role) : r.agent)}</span>
    ${r.started ? `<span class="when" title="${esc(r.agent)}">started at ${esc(when(r.started))}</span>` : ""}${link(r.issue)}
-   <span class="pills">${model(r.model)}${status(r.status)}</span></div>
+   <span class="pills">${model(r.model)}${effort(r.effort)}${status(r.status)}</span></div>
    ${r.title ? `<h3>${esc(r.title)}</h3>` : ""}
    ${r.html ? `<div class="md">${r.html}</div>` : r.last ? `<div class="step" title="${esc(r.last)}">${esc(r.last)}</div>` : ""}`);
 
