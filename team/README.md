@@ -80,9 +80,13 @@ uv run python -m team stop
 .\team\install.ps1               # or: start it at every logon (-Remove to undo)
 ```
 
-The board shows every agent at work (its role, task, stage, time and latest
-step) with its live log and its prompt, what waits for the owner, the queue,
-and recent runs. Each run's raw output is in ~/.linkedin-games/team/logs, and
+The board shows every agent at work (its role, task, stage, model, time and
+latest step) with its live log and its prompt, what waits for the owner, the
+queue, recent runs, and the orchestrator's latest problems. Each recent run
+shows its role, when it started, its task, its model, how it ended (ready,
+stuck, approve, changes, ..., or running, stopped, error) and its verdict's
+title and summary, with the summary's markdown rendered. It follows the
+system's light or dark theme. Each run's raw output is in ~/.linkedin-games/team/logs, and
 the orchestrator's own log is ~/.linkedin-games/team/orchestrator.log.
 
 ## When it's your turn
