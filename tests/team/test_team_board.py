@@ -4,6 +4,7 @@ run's log as readable lines."""
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -182,13 +183,57 @@ def test_the_state_shows_each_agent_with_its_latest_action(board):
     assert state["recent"][0]["agent"] == "20261117-090000-developer-7"
 
 
+def write_log(folder: Path, run: str, lines: list[str]) -> None:
+    (folder / f"{run}.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def recent(board: str, run: str) -> dict:
+    return next(r for r in json.loads(get(board + "/state.json"))["recent"] if r["agent"] == run)
+
+
+def test_a_recent_run_comes_with_its_role_start_model_and_verdict(board, tmp_path):
+    write_log(tmp_path, "20261120-112334-operator34", stream(ended(structured_output=OPERATOR_VERDICT)))
+
+    run = recent(board, "20261120-112334-operator34")
+
+    assert {key: run[key] for key in ("role", "issue", "started", "model", "status", "title", "summary")} == {
+        "role": "operator",
+        "issue": 34,
+        "started": "2026-11-20T11:23:34",
+        "model": "claude-sonnet-5-5",
+        "status": "ready",
+        "title": OPERATOR_VERDICT["title"],
+        "summary": OPERATOR_VERDICT["summary"],
+    }
+    assert run["html"].startswith('<p>PR <a href="https://github.com/owner/linkedin-games/issues/36" target="_blank" rel="noopener">#36</a> was')
+    assert "<code>uv run pytest</code>" in run["html"]
+
+
+def test_a_recent_run_without_a_result_is_running_or_was_stopped(board, tmp_path):
+    working = "20261117-090000-developer-7"  # an agent at work, in SNAPSHOT
+    reading = {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Read", "input": {"file_path": "README.md"}}]}}
+    write_log(tmp_path, working, stream(reading))
+    write_log(tmp_path, "20261116-100000-reviewer-5", stream(reading))
+
+    assert (recent(board, working)["status"], recent(board, working)["last"]) == ("running", "▶ Read: README.md")
+    assert recent(board, "20261116-100000-reviewer-5")["status"] == "stopped"
+
+    write_log(tmp_path, working, stream(reading, ended(structured_output={"status": "stuck", "summary": "I need scipy."})))
+
+    assert (recent(board, working)["status"], recent(board, working)["html"]) == ("stuck", "<p>I need scipy.</p>")
+
+
 def test_each_run_s_log_and_prompt_can_be_read(board):
     assert "▶ Bash: uv run pytest tests/sumbreak" in get(board + "/log/20261117-090000-developer-7")
     assert get(board + "/prompt/20261117-090000-developer-7") == "Build Sumbreak."
 
 
-def test_the_page_is_served(board):
-    assert "<title>LinkedIn games team</title>" in get(board + "/")
+def test_the_page_is_served_whole_in_light_and_dark(board):
+    page = get(board + "/")
+
+    assert "<title>LinkedIn games team</title>" in page
+    assert not re.search(r"<link|<script src|@import|url\(", page)  # nothing from elsewhere
+    assert "prefers-color-scheme: dark" in page
 
 
 def test_unknown_runs_and_paths_are_not_found(board):
