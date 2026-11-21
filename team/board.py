@@ -3,16 +3,33 @@ waits for the owner, and every run's log as readable lines."""
 
 from __future__ import annotations
 
+import html
 import json
 import re
 import threading
 from collections.abc import Callable, Iterable
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 RUN = re.compile(r"^[\w-]+$")  # a run's name; nothing that could leave the log folder
 RECENT = 15
+# A run's name as team/agents.py gives it: when it started, the role, the task.
+NAME = re.compile(r"^(\d{8}-\d{6})-([a-z]+(?:-[a-z]+)*?)-?(\d+)?$")
+
+
+def run_name(name: str) -> dict[str, Any]:
+    """The role, task and start of a run named like 20261120-112334-operator-34."""
+    found = NAME.match(name)
+    try:
+        started = datetime.strptime(found.group(1), "%Y%m%d-%H%M%S") if found else None
+    except ValueError:
+        started = None
+    if found is None or started is None:
+        return {"role": None, "issue": None, "started": None}
+    issue = found.group(3)
+    return {"role": found.group(2), "issue": int(issue) if issue else None, "started": started.isoformat()}
 
 
 def transcript(lines: Iterable[str]) -> list[str]:
@@ -44,6 +61,135 @@ def transcript(lines: Iterable[str]) -> list[str]:
             else:
                 out.append(f"■ ended: {message.get('result') or message.get('subtype')}")
     return out
+
+
+def recap(lines: Iterable[str]) -> dict[str, Any]:
+    """What a run's stream-json output amounts to: its model, and the status,
+    title and summary of the verdict it ended with."""
+    model, result = None, None
+    for line in lines:
+        try:
+            message = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if message.get("type") == "system" and message.get("subtype") == "init":
+            model = message.get("model")
+        elif message.get("type") == "result":
+            result = message
+    verdict = result.get("structured_output") if result else None
+    status, title, summary = None, "", ""
+    if isinstance(verdict, dict):
+        status = _first(verdict, STATUS_FIELDS)
+        summary = _first(verdict, SUMMARY_FIELDS)
+        if status is None and summary is None:  # a verdict of no role's shape
+            status, summary = "verdict", json.dumps(verdict, ensure_ascii=False)
+        status, title, summary = status or "verdict", str(verdict.get("title") or ""), summary or ""
+    elif result is not None:
+        status, summary = "error" if result.get("is_error") else "ended", str(result.get("result") or result.get("subtype") or "")
+    return {"model": model, "status": status, "title": title, "summary": summary}
+
+
+# A verdict's deciding field and its text, by role (see team/roles.py).
+STATUS_FIELDS = ("status", "decision")
+SUMMARY_FIELDS = ("summary", "comment", "review")
+
+
+def _first(verdict: dict[str, Any], fields: tuple[str, ...]) -> str | None:
+    return next((str(verdict[f]) for f in fields if verdict.get(f)), None)
+
+
+def markdown(text: str, repo: str = "") -> str:
+    """A summary's markdown as HTML: paragraphs and line breaks, headings,
+    lists, code blocks and inline code, bold, italics, web links, and #n as a
+    link to the repo's issue n. Everything is escaped first, so no HTML in it
+    reaches the page."""
+    out: list[str] = []
+    paragraph: list[str] = []  # the open paragraph's lines
+    items: list[list[str]] = []  # the open list's items, each its lines
+    kind = "ul"  # that list's tag
+    code: list[str] | None = None  # the open code block's lines
+
+    def flush() -> None:
+        if paragraph:
+            out.append(f"<p>{'<br>'.join(paragraph)}</p>")
+            paragraph.clear()
+        if items:
+            out.append(f"<{kind}>{''.join('<li>' + '<br>'.join(item) + '</li>' for item in items)}</{kind}>")
+            items.clear()
+
+    for line in text.replace("\r\n", "\n").split("\n"):
+        stripped = line.strip()
+        if code is not None:
+            if stripped.startswith("```"):
+                out.append(_code(code))
+                code = None
+            else:
+                code.append(line)
+        elif stripped.startswith("```"):
+            flush()
+            code = []
+        elif not stripped:
+            flush()
+        elif heading := HEADING.match(stripped):
+            flush()
+            out.append(f"<h4>{_inline(heading.group(1), repo)}</h4>")
+        elif item := ITEM.match(line):
+            tag = "ul" if item.group(1) else "ol"
+            if paragraph or tag != kind:
+                flush()
+            kind = tag
+            items.append([_inline(item.group(2), repo)])
+        elif items and line[0].isspace():  # an item's next line
+            items[-1].append(_inline(stripped, repo))
+        else:
+            if items:
+                flush()
+            paragraph.append(_inline(stripped, repo))
+    flush()
+    if code is not None:  # never closed: code to the end
+        out.append(_code(code))
+    return "".join(out)
+
+
+HEADING = re.compile(r"^#{1,6}\s+(.*)$")
+ITEM = re.compile(r"^\s*(?:([-*+])|\d+[.)])\s+(.*)$")  # a bullet, or a number
+
+
+def _code(lines: list[str]) -> str:
+    return f"<pre><code>{html.escape(chr(10).join(lines).rstrip())}</code></pre>"
+
+
+INLINE_CODE = re.compile(r"`([^`\n]+)`")
+# These match text already escaped, so a link's address can't hold a quote or an angle bracket.
+LINK = re.compile(r"\[([^\]]+)\]\((https?://[^\s)]+)\)")  # web links only: no javascript: and the like
+TASK = re.compile(r"(?<![\w&#/])#(\d+)\b")  # #36, an issue or PR
+BOLD = re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*")
+ITALIC = re.compile(r"(?<![\w*])\*(?=[^\s*])(.+?)(?<=[^\s*])\*(?![\w*])")
+
+
+def _inline(line: str, repo: str) -> str:
+    """One line's inline markdown; code spans are left as they are."""
+    parts = INLINE_CODE.split(line)  # odd ones are code
+    return "".join(f"<code>{html.escape(part)}</code>" if i % 2 else _linked(html.escape(part), repo) for i, part in enumerate(parts))
+
+
+def _linked(escaped: str, repo: str) -> str:
+    out, at = [], 0
+    for link in LINK.finditer(escaped):
+        out += [_styled(escaped[at : link.start()], repo), _anchor(link.group(2), _styled(link.group(1), ""))]
+        at = link.end()
+    return "".join([*out, _styled(escaped[at:], repo)])
+
+
+def _styled(escaped: str, repo: str) -> str:
+    if repo:
+        escaped = TASK.sub(lambda task: _anchor(f"https://github.com/{html.escape(repo)}/issues/{task.group(1)}", task.group(0)), escaped)
+    escaped = BOLD.sub(r"<strong>\1</strong>", escaped)
+    return ITALIC.sub(r"<em>\1</em>", escaped)
+
+
+def _anchor(url: str, text: str) -> str:
+    return f'<a href="{url}" target="_blank" rel="noopener">{text}</a>'
 
 
 def _gist(arguments: dict[str, Any]) -> str:
