@@ -1,5 +1,6 @@
 """The board: a page on localhost showing which agent works on what, what
-waits for the owner, and every run's log as readable lines."""
+waits for the owner, how each recent run ended, and every run's log as
+readable lines."""
 
 from __future__ import annotations
 
@@ -17,6 +18,9 @@ RUN = re.compile(r"^[\w-]+$")  # a run's name; nothing that could leave the log 
 RECENT = 15
 # A run's name as team/agents.py gives it: when it started, the role, the task.
 NAME = re.compile(r"^(\d{8}-\d{6})-([a-z]+(?:-[a-z]+)*?)-?(\d+)?$")
+# A verdict's deciding field and its text, whichever the role has (see team/roles.py).
+STATUS_FIELDS = ("status", "decision")
+SUMMARY_FIELDS = ("summary", "comment", "review")
 
 
 def run_name(name: str) -> dict[str, Any]:
@@ -79,19 +83,13 @@ def recap(lines: Iterable[str]) -> dict[str, Any]:
     verdict = result.get("structured_output") if result else None
     status, title, summary = None, "", ""
     if isinstance(verdict, dict):
-        status = _first(verdict, STATUS_FIELDS)
-        summary = _first(verdict, SUMMARY_FIELDS)
-        if status is None and summary is None:  # a verdict of no role's shape
-            status, summary = "verdict", json.dumps(verdict, ensure_ascii=False)
+        status, summary = _first(verdict, STATUS_FIELDS), _first(verdict, SUMMARY_FIELDS)
+        if status is None and summary is None:  # a verdict of no role's shape: shown as it is
+            summary = json.dumps(verdict, ensure_ascii=False)
         status, title, summary = status or "verdict", str(verdict.get("title") or ""), summary or ""
-    elif result is not None:
+    elif result is not None:  # it ended without a verdict
         status, summary = "error" if result.get("is_error") else "ended", str(result.get("result") or result.get("subtype") or "")
     return {"model": model, "status": status, "title": title, "summary": summary}
-
-
-# A verdict's deciding field and its text, by role (see team/roles.py).
-STATUS_FIELDS = ("status", "decision")
-SUMMARY_FIELDS = ("summary", "comment", "review")
 
 
 def _first(verdict: dict[str, Any], fields: tuple[str, ...]) -> str | None:
@@ -156,7 +154,8 @@ ITEM = re.compile(r"^\s*(?:([-*+])|\d+[.)])\s+(.*)$")  # a bullet, or a number
 
 
 def _code(lines: list[str]) -> str:
-    return f"<pre><code>{html.escape(chr(10).join(lines).rstrip())}</code></pre>"
+    code = "\n".join(lines).rstrip()
+    return f"<pre><code>{html.escape(code)}</code></pre>"
 
 
 INLINE_CODE = re.compile(r"`([^`\n]+)`")
