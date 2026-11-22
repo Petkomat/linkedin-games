@@ -14,13 +14,13 @@ import numpy as np
 from PIL import Image
 
 from ..vision import ImageSource, load_rgb
+from .games import HUB_URL
 
 if TYPE_CHECKING:
     from playwright.sync_api import BrowserContext
 
     from .games import Game
 
-HUB_URL = "https://www.linkedin.com/games/"  # the hub: a card for each game
 HUB_WAIT = 10.0  # s for the hub to load
 CARD_WAIT = 10.0  # s for the game's card picture to show and be drawn, once the hub has loaded
 # Resolves once the img has arrived and can be drawn; fails if it can't be, or after `ms`.

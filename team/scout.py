@@ -12,10 +12,11 @@ from html.parser import HTMLParser
 from typing import Protocol
 from urllib.parse import urlparse
 
+from engines.play.games import page_url
+
 from .model import NEW_GAME, Issue
 from .watcher import incident
 
-HUB = "https://www.linkedin.com/games/"
 MARK = re.compile(r"<!-- scout (\{.*?\}) -->")
 
 # Lines of a "How to play" dialog that aren't rules: what LinkedIn adds for
@@ -75,7 +76,7 @@ class HubGame:
 
     @property
     def url(self) -> str:
-        return f"{HUB}{self.slug}/"
+        return page_url(self.slug)
 
 
 class GitHub(Protocol):

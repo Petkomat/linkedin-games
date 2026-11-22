@@ -41,7 +41,8 @@ uv run --extra browser python -m engines.play queens     # or tango, sudoku, pat
 A game you've already solved today shows no board, so without this the
 player looked for one for the whole `--wait` (60 s) and gave up. Before
 opening a game, it now looks at the hub, `https://www.linkedin.com/games/`
-([`hub.py`](hub.py)). On the signed-in hub, a played game's card,
+([`hub.py`](hub.py); the address is `HUB_URL` in [`games.py`](games.py),
+where each game's page is built from its slug too). On the signed-in hub, a played game's card,
 `a[href="/games/<slug>/"]`, has a check on its picture (the `img` inside, an
 SVG of 48×48 CSS px): a dark green disc, `#057642`, about 23 CSS px wide and
 centred, with a white check cut out of it. Played and unplayed cards differ

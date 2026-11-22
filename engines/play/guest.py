@@ -29,16 +29,15 @@ from playwright.sync_api import Browser, Page, sync_playwright
 
 from .browser import Player
 from .check import BOARD_WAIT, START_WAIT, VIEWPORT, click_start_screens, start_and_read
-from .games import GAMES, Game
+from .games import GAMES, Game, page_url
 from .report import report
 
-GAMES_URL = "https://www.linkedin.com/games/{}/"
 SETTLE = 5.0  # s for the board to show after the start screens, before a shot
 
 
 def game_url(slug_or_url: str) -> str:
     """A LinkedIn game's page from its slug; a URL as it is."""
-    return slug_or_url if "://" in slug_or_url else GAMES_URL.format(slug_or_url)
+    return slug_or_url if "://" in slug_or_url else page_url(slug_or_url)
 
 
 @contextmanager
