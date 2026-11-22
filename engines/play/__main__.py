@@ -3,7 +3,8 @@ uv run --extra browser python -m engines.play --login
 
 Opens today's game on LinkedIn in Chrome, reads the board from a screenshot,
 solves it and enters the moves with the mouse. The games show their board
-straight away; none of them has a start button.
+straight away; none of them has a start button. A game the games hub shows
+as played today is skipped without opening it.
 
 The login is kept in the profile folder. Google refuses to sign in inside a
 browser that is being remote-controlled, so to sign in with Google, run
@@ -25,6 +26,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from .browser import Player
 from .games import GAMES, Game
+from .hub import HUB_URL, played_today
 from .report import report
 from .result import looks_blank
 from .timing import Pauses, Tempo
@@ -69,18 +71,46 @@ def main(argv: list[str] | None = None) -> int:
     game = GAMES[args.game]
     started = datetime.now()
     output = args.output or screenshot_path(game.name, started)
-    output.parent.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch_persistent_context(
             args.profile, channel="chrome", headless=False, no_viewport=True, chromium_sandbox=True
         )
         page = browser.pages[0] if browser.pages else browser.new_page()
-        _open(page, game)
         player = Player(page, tempo=Tempo(Pauses(args.pause, args.shortest_pause, args.pause_tail)))
-        played = play(player, game, output, args.wait, started)
-        leave_open(page, args.close_after)
+        code = run(player, game, output, args.wait, started, args.close_after)
         browser.close()
+    return code
+
+
+def run(
+    player: Player,
+    game: Game,
+    output: Path,
+    board_wait: float,
+    started: datetime,
+    close_after: float | None = None,
+    hub: str = HUB_URL,
+) -> int:
+    """The signed-in play of `game` on the player's page, as the command line
+    runs it; returns its exit code.
+
+    After making sure the user is logged in, it looks at the games hub in a
+    tab of its own (see hub.played_today). A game the hub shows as played
+    today is skipped at once with exit code 0: its page isn't opened, no move
+    is made and the page isn't left open. Otherwise the game is opened and
+    played (see `play`), and the page left open as `leave_open` says: 0 if
+    played, 1 if no board was read and solved."""
+    page = player.page
+    _log_in(page)
+    if played_today(page.context, game, hub):
+        print(f"{game.title}: already played today; skipped.")
+        return 0
+    page.bring_to_front()  # back from the hub's tab
+    _open(page, game)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    played = play(player, game, output, board_wait, started)
+    leave_open(page, close_after)
     return 0 if played else 1
 
 
@@ -130,8 +160,8 @@ def leave_open(page: Page, close_after: float | None = None) -> None:
         pass
 
 
-def _open(page: Page, game: Game) -> None:
-    """Make sure the user is logged in, then go to the game.
+def _log_in(page: Page) -> None:
+    """Make sure the user is logged in.
 
     LinkedIn lets guests play, so without the login check a fresh profile
     would play today's puzzle as a guest instead of on the user's account.
@@ -139,6 +169,10 @@ def _open(page: Page, game: Game) -> None:
     if not _logged_in(page):
         page.goto(LOGIN_URL)
         _wait_for_login(page)
+
+
+def _open(page: Page, game: Game) -> None:
+    """Go to the game, logging in again if the login has expired."""
     page.goto(game.url)
     if _is_login(page.url):  # the login expired
         _wait_for_login(page)

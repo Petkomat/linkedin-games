@@ -1,7 +1,9 @@
 """Seams: the play on the user's account, on a local page instead of LinkedIn;
 where the command line saves the screenshot of a play, and how long it keeps
-the browser open afterwards."""
+the browser open afterwards; skipping a game the hub shows as played today."""
 
+import dataclasses
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -16,14 +18,80 @@ from engines.play.result import ResultWait
 from engines.play.timing import INSTANT as NO_WAITING
 from tests.helpers import example
 
-from .pages import page_showing
+from .pages import SCALE, hub_page, page_file, page_showing, showing
 from .test_play_in_browser import presses
 
 pytest.importorskip("playwright.sync_api", reason="needs: uv sync --extra browser")
 
-from engines.play.__main__ import leave_open, play, screenshot_path  # noqa: E402
+from engines.play.__main__ import leave_open, play, run, screenshot_path  # noqa: E402
 
 STARTED = datetime(2026, 11, 17, 9, 30)
+LINKEDIN = re.compile(r"^https?://([^/]*\.)?linkedin\.com/")
+
+
+@pytest.fixture
+def linkedin() -> list[str]:
+    """The addresses on LinkedIn the signed-in page tried to open."""
+    return []
+
+
+@pytest.fixture
+def signed_in(browser, linkedin):
+    """A page that looks signed in to LinkedIn (it has the login cookie) on a
+    2x screen as big as queens1.png, and can't reach LinkedIn at all."""
+    _, viewport = showing(example("queens", "queens1.png"))
+    context = browser.new_context(device_scale_factor=SCALE, viewport=viewport)
+    context.add_cookies([{"name": "li_at", "value": "stand-in", "url": "https://www.linkedin.com"}])
+    context.route(LINKEDIN, lambda route: (linkedin.append(route.request.url), route.abort()))
+    yield context.new_page()
+    context.close()
+
+
+def fast_player(page) -> Player:
+    return Player(page, tempo=NO_WAITING, hand=INSTANT, result_wait=ResultWait(first_look=0.2, limit=2, poll=0.2, settle=0.2))
+
+
+def test_a_game_the_hub_shows_as_played_today_is_skipped_without_opening_it(signed_in, linkedin, tmp_path, capsys):
+    hub = hub_page(tmp_path, ("Queens", "/games/queens/", True), ("Tango", "/games/tango/", False))
+    output = tmp_path / "plays" / "queens" / "today.png"
+
+    code = run(fast_player(signed_in), GAMES["queens"], output, board_wait=5, started=STARTED, hub=hub)
+
+    assert code == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "Queens: already played today; skipped."
+    assert linkedin == []  # Queens' page was never opened
+    assert signed_in.url == "about:blank"
+    assert not output.parent.exists()  # not even an empty folder for the play
+    assert not signed_in.is_closed()  # main closes the browser at once; nothing waits for --close-after
+
+
+def test_when_the_hub_does_not_load_the_game_is_opened_and_played(signed_in, linkedin, tmp_path, capsys):
+    # The hub is LinkedIn's own here, and LinkedIn can't be reached. Chrome
+    # then opens its error page in the hub's tab, which must not stop the
+    # game's page from opening.
+    queens = dataclasses.replace(GAMES["queens"], url=page_file(tmp_path, example("queens", "queens1.png"), scale=SCALE))
+    output = tmp_path / "plays" / "queens" / "today.png"
+
+    code = run(fast_player(signed_in), queens, output, board_wait=5, started=STARTED, close_after=0)
+
+    assert linkedin == ["https://www.linkedin.com/games/"]
+    assert code == 0
+    assert queens.scan(Image.open(output)).puzzle == queens.scan(example("queens", "queens1.png")).puzzle
+    printed = capsys.readouterr().out
+    assert "skipped" not in printed
+    assert "Done" in printed
+
+
+def test_a_game_the_hub_shows_as_not_played_is_opened_and_played(signed_in, tmp_path, capsys):
+    queens = dataclasses.replace(GAMES["queens"], url=page_file(tmp_path, example("queens", "queens1.png"), scale=SCALE))
+    hub = hub_page(tmp_path, ("Queens", queens.url, False))  # its card links to the whole address
+    output = tmp_path / "queens.png"
+
+    code = run(fast_player(signed_in), queens, output, board_wait=5, started=STARTED, close_after=0, hub=hub)
+
+    assert code == 0
+    assert output.exists()
+    assert "Done" in capsys.readouterr().out
 
 
 def test_a_play_saves_the_solution_and_what_shows_after_a_blank_page(browser, tmp_path, capsys):

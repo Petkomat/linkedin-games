@@ -16,10 +16,14 @@ uv run --extra browser python -m engines.play queens     # or tango, sudoku, pat
    `uv run --extra browser python -m engines.play --login` once first: it
    opens an ordinary Chrome window on the same profile. Log in there, then
    close the window.
-2. The game opens with its board already showing; no game has a start button.
+2. The games hub opens in a tab of its own. If it shows the game as played
+   today, the player prints `<Title>: already played today; skipped.`, closes
+   the browser at once and exits with 0, without opening the game. See
+   [Games played today](#games-played-today).
+3. The game opens with its board already showing; no game has a start button.
    The screen is read until the same board is read twice in a row, so a
    board that is still fading in isn't played, and that board has a solution.
-3. The moves are played. Then the final screen, the finished board or the
+4. The moves are played. Then the final screen, the finished board or the
    game's result screen, is saved
    as `plays/<game>/<date>_<time>.png`, for example
    `plays/zip/2026-11-10_14-03-07.png` (`-o` saves it elsewhere). See
@@ -31,6 +35,43 @@ uv run --extra browser python -m engines.play queens     # or tango, sudoku, pat
    browser stays open until you close its window (or press Ctrl+C), so nothing
    is cut off and you can look at the result. `--close-after 5` closes it
    five seconds after the end instead.
+
+## Games played today
+
+A game you've already solved today shows no board, so without this the
+player looked for one for the whole `--wait` (60 s) and gave up. Before
+opening a game, it now looks at the hub, `https://www.linkedin.com/games/`
+([`hub.py`](hub.py)). On the signed-in hub, a played game's card,
+`a[href="/games/<slug>/"]`, has a check on its picture (the `img` inside, an
+SVG of 48×48 CSS px): a dark green disc, `#057642`, about 23 CSS px wide and
+centred, with a white check cut out of it. Played and unplayed cards differ
+in nothing else but the picture's hashed address, which changes when LinkedIn
+deploys, so the decision is made from the picture's pixels.
+
+- `shows_played_check(picture)` needs no browser. It counts the pixels whose
+  every colour is within 25 of rgb(5, 118, 66) (per channel, not a
+  Euclidean distance). The picture shows the check if they cover at least a
+  third of the disc's area. The picture is 48 CSS px across, so its size in
+  pixels gives the screen's scale, and the threshold grows with its area:
+  139 pixels at 1x, 554 at 2x. On the drawn pictures in the tests the disc
+  has 330-340 such pixels at 1x and about 1420 at 2x. Pictures without the
+  disc have none. The owner measured 300-350 on the played cards of the
+  signed-in hub, and none on the others.
+- `played_today` opens the hub in a new tab of the same browser and closes
+  the tab afterwards. It takes the first `img` in the game's card. The card
+  may link by path (`/games/zip/`), as on the signed-in hub, or by the whole
+  address, with or without a query, as on the guests' hub. It waits until
+  the picture is drawn (its box shows before the picture arrives), then
+  screenshots it.
+- If the hub doesn't load within 10 s, has no card for the game within 10 s
+  more, or anything else fails, the player says so and plays the game as
+  before. The check costs at most about 20 s.
+- A tab of its own, because after a hub that failed to load, Chrome is still
+  opening its error page when the game is opened in the same tab. That
+  stopped the game's page from opening.
+
+Guests get no check marks, so the guest player and the live check don't look
+at the hub.
 
 Playwright is an optional extra, so the solvers still need only numpy and
 Pillow. It drives the Chrome that is already installed, so it downloads no
@@ -233,6 +274,21 @@ days.
   page, which saves the result at the limit.
   `test_play_cli.py` and `test_play_guest.py` play on a local page that goes
   blank after the last move, like LinkedIn's, for both players.
+- `tests/play/test_play_hub.py`: the check on drawn card pictures (three
+  icons, one of them green but far from the disc's green), with and without
+  the disc, at scales 1, 1.25, 1.5 and 2, and enlarged twice from 1x. A green
+  speck a fifth of the disc's size, a picture not drawn yet. Then in the
+  browser at 2x, on a local hub with SVG cards like LinkedIn's: played and
+  unplayed cards, a card linked by its whole address, no card (it gives up
+  within the wait), a hub that doesn't load, and pictures that arrive a
+  second after the page from a local server. The owner's hub screenshot
+  (`examples/hub/signed-in-hub1.png`) isn't in the repo yet, so no test uses
+  a real one.
+- `tests/play/test_play_cli.py` also runs the signed-in player on a page with
+  LinkedIn's login cookie that can't reach LinkedIn. A game the hub shows as
+  played is skipped with the exact line and exit code 0, and LinkedIn is
+  never asked for it. When the hub (LinkedIn's own, so unreachable) doesn't
+  load, or shows the game unplayed, the game is opened and played.
 
 ## Not done yet
 
