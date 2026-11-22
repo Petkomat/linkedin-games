@@ -13,6 +13,11 @@ offers.
 
 from __future__ import annotations
 
+import base64
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 import numpy as np
 import pytest
 from PIL import Image, ImageDraw
@@ -89,3 +94,122 @@ def test_a_speck_of_the_green_is_not_the_check_at_any_scale(scale):
     # A dot 10 CSS px across has a fifth of the disc's area. At 2x that is
     # about 300 device px, as many as the whole disc has at 1x.
     assert not shows_played_check(picture(scale, speck=10))
+
+
+# In the browser: a local page stands in for the hub, with cards as the owner
+# describes them, a[href="/games/<slug>/"] around a 48x48 SVG picture.
+
+ICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">'
+    '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">'
+    '<stop offset="0" stop-color="#7048c8"/><stop offset="1" stop-color="#e66ea0"/></linearGradient></defs>'
+    '<rect width="48" height="48" rx="8" fill="url(#g)"/>{check}</svg>'
+)
+CHECK_SVG = (
+    '<circle cx="24" cy="24" r="11.5" fill="#057642"/>'
+    '<path d="M19 24 l3.5 4 l7 -8" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>'
+)
+
+
+def hub_page(folder, *cards: tuple[str, str, bool]) -> str:
+    """The URL of a local hub with a card for each (title, href, played)."""
+    items = "".join(
+        f'<li><a href="{href}"><img width="48" height="48" alt="" '
+        f'src="data:image/svg+xml;base64,{_base64(ICON_SVG.format(check=CHECK_SVG if played else ""))}">'
+        f"<p>{title}</p></a></li>"
+        for title, href, played in cards
+    )
+    path = folder / "hub.html"
+    path.write_text(f"<body style='margin:0;background:#f4f2ee'><ul>{items}</ul></body>", encoding="utf-8")
+    return path.as_uri()
+
+
+def _base64(text: str) -> str:
+    return base64.b64encode(text.encode()).decode()
+
+
+@pytest.fixture
+def page(browser):
+    page = browser.new_page(device_scale_factor=2)  # a high-resolution screen
+    yield page
+    page.close()
+
+
+TODAY = [("Queens", "/games/queens/", True), ("Tango", "/games/tango/", False), ("Zip", "/games/zip/", True)]
+
+
+@pytest.mark.parametrize(("game", "played"), [("queens", True), ("tango", False), ("zip", True)])
+def test_the_hub_says_which_games_were_played_today(page, tmp_path, game, played):
+    from engines.play.games import GAMES
+    from engines.play.hub import played_today
+
+    assert played_today(page, GAMES[game], hub_page(tmp_path, *TODAY)) == played
+
+
+def test_a_card_that_links_by_the_whole_address_counts_too(page, tmp_path):
+    # As the guests' hub links its cards (see tests/team/test_team_scout.py).
+    from engines.play.games import GAMES
+    from engines.play.hub import played_today
+
+    hub = hub_page(tmp_path, ("Wend", "https://www.linkedin.com/games/wend/?trk=games_hub", True))
+
+    assert played_today(page, GAMES["wend"], hub)
+
+
+def test_a_hub_without_the_games_card_lets_it_be_played_and_says_so_soon(page, tmp_path, capsys):
+    from engines.play.games import GAMES
+    from engines.play.hub import played_today
+
+    hub = hub_page(tmp_path, *TODAY)
+    started = time.monotonic()
+
+    assert not played_today(page, GAMES["patches"], hub, card_wait=1)
+    assert time.monotonic() - started < 5
+    assert "Patches" in capsys.readouterr().out
+
+
+@pytest.fixture
+def slow_hub():
+    """The URL of a hub on a local server whose card pictures (Queens played,
+    Tango not) arrive a second after the page, as on a slow line: the
+    pictures' boxes show before the pictures do."""
+
+    class Hub(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 (http.server's name)
+            if self.path.startswith("/icon/"):
+                time.sleep(1)
+                body, kind = ICON_SVG.format(check=CHECK_SVG if "checked" in self.path else "").encode(), "image/svg+xml"
+            else:
+                cards = (("queens", "checked"), ("tango", "plain"))
+                body, kind = "".join(
+                    f'<a href="/games/{slug}/"><img width="48" height="48" alt="" src="/icon/{icon}.svg"></a>'
+                    for slug, icon in cards
+                ).encode(), "text/html"
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Hub)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}/"
+    server.shutdown()
+
+
+@pytest.mark.parametrize(("game", "played"), [("queens", True), ("tango", False)])
+def test_a_card_picture_that_arrives_late_is_read_once_it_has_arrived(page, slow_hub, game, played):
+    from engines.play.games import GAMES
+    from engines.play.hub import played_today
+
+    assert played_today(page, GAMES[game], slow_hub) == played
+
+
+def test_a_hub_that_does_not_load_lets_the_game_be_played(page, tmp_path):
+    from engines.play.games import GAMES
+    from engines.play.hub import played_today
+
+    assert not played_today(page, GAMES["queens"], (tmp_path / "nowhere.html").as_uri())
