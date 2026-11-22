@@ -45,3 +45,28 @@ Every game follows the same shape: a pure `solve(puzzle)` backtracking engine,
 in the order the solver found it, wrong guesses included. All of them are
 tested test-first. See each engine's README for its algorithm, and
 [`engines/play`](engines/play) for playing on LinkedIn.
+
+## How it improves itself
+
+A small team of Claude agents keeps the repo growing and working. Once a day,
+two plain scripts on GitHub Actions look at LinkedIn: the Scout spots a new
+game, the Watcher a built game that fails today's board, and each files an
+issue. The owner can open one too. The Project Manager triages it, the
+Developer builds or fixes it test-first, the Reviewer judges the PR, and the
+Operator gets it ready to merge. GitHub issues and their labels are the only
+state.
+
+Each agent is a headless `claude` run in its own git worktree, with only its
+role's tools. Agents go to LinkedIn only as a guest, never use the owner's
+account, and never push to main or merge: the owner approves every merge.
+
+```
+uv run python -m team labels     # once: the labels the team uses
+uv run python -m team run        # start: the orchestrator, board on http://127.0.0.1:8765
+uv run python -m team stop       # stop: the orchestrator and its agents
+```
+
+Setup (a bot account and its token, `~/.linkedin-games/team.env`, branch
+protection on main) and the pipeline in detail are in
+[team/README.md](team/README.md). [docs/orchestration.md](docs/orchestration.md)
+is the big picture, and [GLOSSARY.md](GLOSSARY.md) defines the words.
