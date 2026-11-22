@@ -44,3 +44,14 @@ SUMBREAK5 = board("""
      .  4  1
     16 x2  4
 """)
+
+# Typed in from examples/sumbreak/sumbreak8.png, the daily board of
+# 2026-11-22: the first 4x4 board, and the first with numbers of three
+# digits. sumbreak9.png shows it to another guest with circles, which stop
+# growing at 128, 0.9 of a cell across, so the big ones don't touch.
+SUMBREAK8 = board("""
+     1  1  1 512
+     1  4  1 256
+     2  8  1 128
+     4  8 32  64
+""")

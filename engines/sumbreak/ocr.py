@@ -22,7 +22,7 @@ show where the cells are.
    column may be empty: every step between two of them must be a whole
    number of pitches.
 4. **Numbers:** a tile's number is printed in a darker shade of its colour.
-   Its pixels go to the shared glyph reader, unless they hold a sign: a mark
+   Its shades go to the shared glyph reader, unless they hold a sign: a mark
    shorter than the digits, or an x. "×2" is a x2 tile.
 5. **Refused:** a tile with any other sign, a mark the glyph reader finds
    like no digit, and a coloured shape on a cell that is no tile, raise
@@ -262,7 +262,11 @@ def _label(box: np.ndarray, colourful: np.ndarray) -> Tile | None:
     The tile's own colour is the most common one in it. The ink is the pixels
     darker than halfway to its darkest: the paler edges of small, blurry
     digits would close the gap in a 6, which then reads as 8. The ink may be
-    grey: "x2" is printed in a greyish purple.
+    grey: "x2" is printed in a greyish purple. The marks are cut and their
+    holes counted on that ink, but the glyph reader compares their shapes on
+    the shades from the tile's colour to the darkest, which show where a thin
+    stroke lies to a fraction of a pixel: cut at halfway, a thin 3 on a
+    circle matched a 3 only 0.572, too little to be read.
 
     The digits of a number are all as tall. A shorter mark is a sign, and so
     is an x of any height: the result screen's icon shows a tile with only an
@@ -274,18 +278,19 @@ def _label(box: np.ndarray, colourful: np.ndarray) -> Tile | None:
     darkest = brightness.min()
     if darkest > colour - DARKER:
         return None
-    ink = brightness < (colour + darkest) / 2
+    shade = np.clip((colour - brightness) / (colour - darkest), 0, 1)  # 1 at the darkest
+    ink = shade > 0.5
     marks = split_glyphs(ink, speck=SPECK)
     tallest = max(mark.shape[0] for _, mark in marks)
     signs = [i for i, (_, mark) in enumerate(marks) if mark.shape[0] < SIGN * tallest or _is_times(mark)]
     if signs and (signs != [0] or not _is_times(marks[0][1])):
         return UNKNOWN_SIGN
-    digits = ink.copy()
+    digits = shade.copy()  # the reader cuts at 0.5 too, but compares shapes on the shades
     if signs:  # an x: the digits after it are the factor
         left, sign = marks[0]
-        digits[:, : left + sign.shape[1]] = False
+        digits[:, : left + sign.shape[1]] = 0
     try:
-        number = read_number(digits.astype(float), at_least=MATCH)
+        number = read_number(digits, at_least=MATCH)
     except Unreadable:  # a mark as tall as the digits that is no digit
         return UNKNOWN_SIGN
     if not signs:
