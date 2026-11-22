@@ -3,7 +3,8 @@ uv run --extra browser python -m engines.play --login
 
 Opens today's game on LinkedIn in Chrome, reads the board from a screenshot,
 solves it and enters the moves with the mouse. The games show their board
-straight away; none of them has a start button.
+straight away; none of them has a start button. A game the games hub shows
+as played today is skipped without opening it.
 
 The login is kept in the profile folder. Google refuses to sign in inside a
 browser that is being remote-controlled, so to sign in with Google, run
@@ -70,7 +71,6 @@ def main(argv: list[str] | None = None) -> int:
     game = GAMES[args.game]
     started = datetime.now()
     output = args.output or screenshot_path(game.name, started)
-    output.parent.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch_persistent_context(
@@ -108,6 +108,7 @@ def run(
         return 0
     page.bring_to_front()  # back from the hub's tab
     _open(page, game)
+    output.parent.mkdir(parents=True, exist_ok=True)
     played = play(player, game, output, board_wait, started)
     leave_open(page, close_after)
     return 0 if played else 1

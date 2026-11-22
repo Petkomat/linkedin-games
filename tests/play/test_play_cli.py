@@ -53,7 +53,7 @@ def fast_player(page) -> Player:
 
 def test_a_game_the_hub_shows_as_played_today_is_skipped_without_opening_it(signed_in, linkedin, tmp_path, capsys):
     hub = hub_page(tmp_path, ("Queens", "/games/queens/", True), ("Tango", "/games/tango/", False))
-    output = tmp_path / "queens.png"
+    output = tmp_path / "plays" / "queens" / "today.png"
 
     code = run(fast_player(signed_in), GAMES["queens"], output, board_wait=5, started=STARTED, hub=hub)
 
@@ -61,7 +61,7 @@ def test_a_game_the_hub_shows_as_played_today_is_skipped_without_opening_it(sign
     assert capsys.readouterr().out.splitlines()[-1] == "Queens: already played today; skipped."
     assert linkedin == []  # Queens' page was never opened
     assert signed_in.url == "about:blank"
-    assert not output.exists()
+    assert not output.parent.exists()  # not even an empty folder for the play
     assert not signed_in.is_closed()  # main closes the browser at once; nothing waits for --close-after
 
 
@@ -70,7 +70,7 @@ def test_when_the_hub_does_not_load_the_game_is_opened_and_played(signed_in, lin
     # then opens its error page in the hub's tab, which must not stop the
     # game's page from opening.
     queens = dataclasses.replace(GAMES["queens"], url=page_file(tmp_path, example("queens", "queens1.png"), scale=SCALE))
-    output = tmp_path / "queens.png"
+    output = tmp_path / "plays" / "queens" / "today.png"
 
     code = run(fast_player(signed_in), queens, output, board_wait=5, started=STARTED, close_after=0)
 
