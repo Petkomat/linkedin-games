@@ -6,7 +6,7 @@ from engines.common.actions import Button, Drag, Think
 from engines.sumbreak.moves import moves
 from tests.helpers import solve_within
 
-from .boards import SUMBREAK1, SUMBREAK5, board
+from .boards import SUMBREAK1, SUMBREAK5, SUMBREAK8, board
 from .generator import random_puzzle
 from .rules import merged
 
@@ -56,6 +56,12 @@ def test_the_moves_leave_one_tile_with_everything_added_up():
     final = play(SUMBREAK1, moves(SUMBREAK1))[-1]
 
     assert list(final.values()) == [128]
+
+
+def test_the_moves_play_out_the_first_4x4_board():
+    final = play(SUMBREAK8, moves(SUMBREAK8))[-1]
+
+    assert list(final.values()) == [1024]
 
 
 def test_x2_tiles_double_what_they_are_dragged_onto_or_what_is_dragged_onto_them():

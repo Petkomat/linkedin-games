@@ -51,6 +51,18 @@ a guest tried them on that board:
 - **The look with circles** draws a x2 tile as a purple scalloped circle
   with "×2" in it, as big as a 4's circle (sumbreak6.png, the same board).
 
+On 2026-11-22 the daily board was the first **4x4** board (sumbreak8.png with
+squares, sumbreak9.png with circles), and the first with numbers of three
+digits: 128, 256 and 512, adding up to 1024. It holds only plain numbers, so
+the rules above cover it. The card is as wide as on 3x3 boards, so the cells
+are smaller (99 px rather than 132). A circle is 0.4 of a cell across for a
+1 and grows by about 0.075 of a cell with each doubling, but stops at 0.9 of
+a cell from 128 on, so the 128, 256 and 512 circles one above the other
+don't touch. The owner reported it as not solvable: with circles, the thin
+3 of the 32 was refused as an unknown sign (see
+[Digit or symbol](#digit-or-symbol-how-well-a-mark-must-match)), so the
+player found no board it could read.
+
 ## Solver
 
 Numbers only grow, so a tile with the smallest number on the board can only
@@ -108,7 +120,8 @@ These boards are crowded with small numbers, which pair up in the most ways.
 A x2 tile goes with any number, so it adds ways too: with a quarter of an
 8x8 board's cells x2 tiles, 13 of 30 boards take over a second, and the
 slowest tries 68,000 merges. The daily boards so far are 3x3, with 2 x2
-tiles on sumbreak5, which takes 0.3 ms. With numbers as spread out as
+tiles on sumbreak5, which takes 0.3 ms, and one 4x4 (sumbreak8, up to 512),
+which takes 0.7 ms and no wrong guess. With numbers as spread out as
 sumbreak1's (128 on a 3x3, three doublings more than the fewest that fill
 it), 8x8 boards take at most 0.4 s, and with 8 x2 tiles 3.4 s (median
 0.18 s). sumbreak1 itself takes 1 ms and no wrong guess. Without the checks, the search took up to 7 s on 7x7 boards.
@@ -140,7 +153,10 @@ show where the cells are.
    Its ink, the pixels darker than halfway from the tile's colour to the
    darkest one, is cut into marks at empty columns, by the shared
    `split_glyphs` that `read_number` uses too. Paler edges would close the
-   gap of a small 6, which then reads as 8.
+   gap of a small 6, which then reads as 8. The glyph reader cuts and counts
+   holes at the same halfway, but compares each digit's shape on its shades,
+   0 at the tile's colour and 1 at the darkest: they show where a thin stroke
+   lies to a fraction of a pixel, which a cut at halfway loses.
 5. **x2:** the digits of a number are all as tall. A mark under 80% of the
    tallest is a sign, and so is one shaped like an x (two diagonals, give or
    take a pixel, and nothing at the middles of its sides, as a + would
@@ -174,40 +190,60 @@ on a tile read as 1 (issue #34). Sumbreak asks it for a match of at least
 **0.58**. A mark that matches its nearest digit less is refused as an
 unknown sign. The other games don't ask; see below why.
 
-Measured on 2026-11-20 on every example board of every game, each
-screenshot as it is and at twice its size, and on today's daily boards seen
-by a guest. The symbols were printed on sumbreak5's 16 tile in the 16's
-ink, as tall as its digits: 45 symbols, at both sizes.
+Sumbreak's digits are compared on their shades (see step 4) since
+2026-11-22, when a thin 3 cut at halfway was refused. The Sumbreak rows are
+measured that way, each screenshot as it is and at twice its size, with what
+a cut at halfway gave in brackets. The other games read their own ink, as
+measured on 2026-11-20 on every example board and on that day's daily
+boards seen by a guest.
 
 | Glyphs | Lowest match, as is | at twice the size |
 |---|---|---|
-| sumbreak1 (and sumbreak4, the same board later on) | 0.672 | 0.757 |
-| sumbreak2 | 0.693 | 0.761 |
-| sumbreak3 | 0.725 | 0.754 |
-| sumbreak5 | 0.855 | 0.897 |
-| sumbreak6 | 0.842 | 0.856 |
+| sumbreak1 (and sumbreak4, the same board later on) | 0.684 (0.672) | 0.755 (0.757) |
+| sumbreak2 | 0.741 (0.693) | 0.785 (0.761) |
+| sumbreak3 | 0.759 (0.725) | 0.751 (0.754) |
+| sumbreak5 | 0.871 (0.855) | 0.900 (0.897) |
+| sumbreak6 | 0.871 (0.842) | 0.873 (0.856) |
+| sumbreak8, 4x4 with squares | 0.722 (0.693) | 0.792 (0.724) |
+| sumbreak9, 4x4 with circles: the 32's thin 3 | **0.636 (0.572)** | 0.743 (0.710) |
 | sudoku1, patches1, zip1, zip2 | 0.649 (sudoku1's 3) | 0.727 |
-| today's Zip (zip3.png) | 0.572 (a thin 3) | |
-| today's Patches | 0.662 (a 3) | |
-| today's Mini Sudoku | over 0.66 | |
+| Zip of 2026-11-20 (zip3.png) | 0.572 (a thin 3) | |
+| Patches of 2026-11-20 | 0.662 (a 3) | |
+| Mini Sudoku of 2026-11-20 | over 0.66 | |
 | patches2, a clone site's pixel font | 0.411 | 0.322 |
-| + on the 16 tile (read as 1) | 0.354 | 0.476 |
-| five-pointed star on the 16 tile | 0.411 | 0.368 |
+| + on the 16 tile (read as 1) | 0.371 (0.354) | 0.486 (0.476) |
+| five-pointed star on the 16 tile | 0.391 (0.391) | 0.382 (0.374) |
+| + in Pillow's font, its 1 as tall as the 16's digits, on the 16 tile | 0.532 (0.545) | 0.542 (0.544) |
 
 - **Sumbreak only.** On the Sumbreak boards the lowest real digit matches
-  0.672 and the highest + 0.52 (Pillow's + printed alone at 14 px), so 0.58
-  keeps real digits with a margin of 0.09 and refuses the + of issue #34
-  with a margin of 0.06 to 0.23. Across all games there is no such gap: on
-  today's Zip a thin 3 matched only 0.572. A threshold shared by every game
-  would have to fit between the + (0.52) and that 3, a gap of 0.05, and a
-  thinner 3 some day would be refused and its game not played. Today's
-  Sumbreak board was read and played with 0.58.
+  0.636 and the highest + 0.542, so 0.58 keeps real digits with a margin of
+  0.056 and refuses a + with a margin of 0.038 or more. Cut at halfway, the
+  32's 3 on sumbreak9 matched 0.572 and today's board was refused (issue
+  #41). Comparing shapes on the shades lifts thin digits most, 0.064 for
+  that 3. Where a board's lowest match goes down, it goes down by 0.034 at
+  most (sumbreak9 at 1.5 times its size, 0.773 to 0.739), well above 0.58.
+  The highest + doesn't come closer (0.545 cut). Across all games there is
+  no such gap: on the Zip of 2026-11-20 a thin 3 matched only 0.572 too, and
+  a threshold shared by every game would have to fit between the + and that
+  3.
+- **Fractional screens.** A Windows screen scaled to 125% or 150% has
+  devicePixelRatio 1.25 or 1.5. Today's board resized that way matches 0.656
+  or more on the shades (0.633 cut at halfway), and the tests read it at 1.5.
 - **The sets overlap anyway.** Symbols shaped like a digit match it as well
   as real digits do: ] 0.865, ! 0.815 and | 0.767 as 1, ? 0.777 as 2, a
-  disc 0.710 as 3, an up arrow 0.706 as 1, @ 0.686 as 0. 29 of the 90
-  symbol glyphs match at 0.58 or more and are read as a digit. The other 61
-  are refused, among them every +, -, =, ~, %, <, >, *, five-pointed star,
-  heart, triangle, diamond and right or down arrow.
+  disc 0.710 as 3, an up arrow 0.706 as 1, @ 0.686 as 0 (2026-11-20, 45
+  symbols printed on the 16 tile as tall as its digits: 29 of the 90 symbol
+  glyphs were read as a digit, and every +, -, =, ~, %, <, >, *,
+  five-pointed star, heart, triangle, diamond and right or down arrow was
+  refused). On 2026-11-22, 44 symbols (the 32 printable ASCII ones and 12
+  shapes) were printed on the 16 tile again, anti-aliased in its ink, and
+  read both ways. The shades refuse at both sizes every symbol the cut
+  refused, but four that were close: $ (0.570 cut, 0.587 shaded, as 8), a
+  comma (0.514, 0.599, as 7) and a ring (0.550, 0.585, as 6) as they are,
+  and a dot at twice the size (0.482, 0.717, as 3, as a disc already was).
+  A " is refused now as it is (0.585, 0.556). Every +, -, =, ~, %, <, >,
+  *, #, :, ;, five-pointed star, heart, diamond, check mark, thick x and
+  left, right or down arrow is still refused at both sizes.
 - **LinkedIn's 1 on round tiles** has a slab foot, which Pillow's 1 hasn't
   got. It matched only 0.471, no better than a +, so the reader also
   compares a 1 with Pillow's 1 with a foot added. On sumbreak2 it now
@@ -215,7 +251,8 @@ ink, as tall as its digits: 45 symbols, at both sizes.
 
 Tested on the real board in both looks, at devicePixelRatio 1 and 2, on a
 game in progress with emptied cells, on the board with x2 tiles in both
-looks at both scales, and on the result screen (no board). sumbreak5.png is also edited to
+looks at both scales, on the 4x4 board with numbers up to 512 in both looks
+at 1, 1.5 and 2, and on the result screen (no board). sumbreak5.png is also edited to
 show an x alone and a ×4, which are refused, and a + or a star instead of its 16, which are
 refused at both scales. 6x6 boards with empty cells are
 drawn the way LinkedIn draws them, as squares and as circles, at both scales
