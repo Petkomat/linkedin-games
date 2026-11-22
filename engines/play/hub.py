@@ -3,8 +3,10 @@ played today."""
 
 from __future__ import annotations
 
+import contextlib
 import io
 import math
+import time
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -14,7 +16,7 @@ from PIL import Image
 from ..vision import ImageSource, load_rgb
 
 if TYPE_CHECKING:
-    from playwright.sync_api import Page
+    from playwright.sync_api import BrowserContext
 
     from .games import Game
 
@@ -47,26 +49,42 @@ def shows_played_check(picture: ImageSource) -> bool:
     return bool(green.sum() >= PLAYED_SHARE * disc)
 
 
-def played_today(page: Page, game: Game, hub: str = HUB_URL, card_wait: float = CARD_WAIT) -> bool:
-    """True if the hub, opened on `page`, shows `game`'s card with the check
-    of a game played today (see `shows_played_check`).
+def played_today(context: BrowserContext, game: Game, hub: str = HUB_URL, card_wait: float = CARD_WAIT) -> bool:
+    """True if the hub shows `game`'s card with the check of a game played
+    today (see `shows_played_check`).
 
     False if it shows the card without the check, and also if the hub doesn't
-    load, has no card for the game within `card_wait` s, or anything else goes
-    wrong: then the game is played as usual."""
+    load within HUB_WAIT s, has no card for the game within `card_wait` s
+    more, or anything else goes wrong: then the game is played as usual.
+
+    The hub is opened in a tab of its own in `context`, closed afterwards, so
+    whatever it does can't get in the way of the game's page: after a hub
+    that failed to load, Chrome would still be opening its error page when
+    the game's page is opened in the same tab, which stops that."""
     from playwright.sync_api import Error as PlaywrightError  # the browser extra, only needed here
 
+    tab = None
     try:
-        page.goto(hub, wait_until="domcontentloaded", timeout=HUB_WAIT * 1000)
-        picture = page.locator(_card(game.url)).locator("img").first
-        picture.wait_for(state="visible", timeout=card_wait * 1000)
-        picture.scroll_into_view_if_needed(timeout=card_wait * 1000)  # a lazy picture loads only once in view
-        picture.evaluate(DRAWN, card_wait * 1000)  # its box shows before the picture has arrived
-        shot = picture.screenshot(timeout=card_wait * 1000)
+        tab = context.new_page()
+        tab.goto(hub, wait_until="domcontentloaded", timeout=HUB_WAIT * 1000)
+        deadline = time.monotonic() + card_wait
+
+        def left() -> float:  # ms; Playwright waits for ever on 0
+            return max(1.0, (deadline - time.monotonic()) * 1000)
+
+        picture = tab.locator(_card(game.url)).locator("img").first
+        picture.wait_for(state="visible", timeout=left())
+        picture.scroll_into_view_if_needed(timeout=left())  # a lazy picture loads only once in view
+        picture.evaluate(DRAWN, left())  # its box shows before the picture has arrived
+        shot = picture.screenshot(timeout=left())
     except PlaywrightError as error:
         reason = str(error).strip().splitlines()[0] if str(error).strip() else type(error).__name__
         print(f"Couldn't see on the hub whether {game.title} was played today ({reason}); opening it.")
         return False
+    finally:
+        if tab is not None:
+            with contextlib.suppress(PlaywrightError):
+                tab.close()
     return shows_played_check(Image.open(io.BytesIO(shot)))
 
 

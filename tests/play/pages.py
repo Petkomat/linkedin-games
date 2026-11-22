@@ -121,6 +121,38 @@ board.addEventListener("pointerup", () => {{
 </script>"""
 
 
+def card_svg(played: bool) -> str:
+    """A game card's picture on the signed-in hub, as the owner describes it:
+    a 48x48 SVG, the game's icon and, if `played`, a dark green disc (#057642,
+    23 px across, in the middle) with a white check on it."""
+    check = (
+        '<circle cx="24" cy="24" r="11.5" fill="#057642"/>'
+        '<path d="M19 24 l3.5 4 l7 -8" fill="none" stroke="white" stroke-width="3"'
+        ' stroke-linecap="round" stroke-linejoin="round"/>'
+    )
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">'
+        '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0" stop-color="#7048c8"/><stop offset="1" stop-color="#e66ea0"/></linearGradient></defs>'
+        f'<rect width="48" height="48" rx="8" fill="url(#g)"/>{check if played else ""}</svg>'
+    )
+
+
+def hub_page(folder, *cards: tuple[str, str, bool]) -> str:
+    """The URL of a page like the signed-in hub, saved in `folder`, with a card
+    for each (title, href, played): a[href] around a 48x48 picture (see
+    `card_svg`) and the game's title."""
+    items = "".join(
+        f'<li><a href="{href}"><img width="48" height="48" alt="" '
+        f'src="data:image/svg+xml;base64,{base64.b64encode(card_svg(played).encode()).decode()}">'
+        f"<p>{html.escape(title)}</p></a></li>"
+        for title, href, played in cards
+    )
+    path = folder / "hub.html"
+    path.write_text(f"<body style='margin:0;background:#f4f2ee'><ul>{items}</ul></body>", encoding="utf-8")
+    return path.as_uri()
+
+
 def _later(html: str, ms: int) -> str:
     """`html`, added to the page only after `ms` milliseconds."""
     if not ms or not html:
