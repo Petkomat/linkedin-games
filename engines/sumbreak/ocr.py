@@ -52,7 +52,7 @@ DARKER = 50  # a number's pixels are darker than their tile by more than this
 SPECK = 0.3  # of the tallest mark on a tile: anything shorter is a speck, not a mark
 SIGN = 0.8  # of the tallest mark: a shorter one is a sign, not a digit (the x of x2 is 0.58 of its 2)
 STROKES = 0.8  # share of an x's two diagonals that are ink
-MATCH = 0.58  # a mark that matches its nearest digit less is no digit (digits >= 0.672, a + <= 0.52; see README)
+MATCH = 0.58  # a mark that matches its nearest digit less is no digit (digits >= 0.636, a + <= 0.545; see README)
 UNKNOWN_SIGN = "an unknown sign"
 
 
