@@ -38,12 +38,20 @@ from ..zip import ocr as zip_ocr
 from ..zip import render as zip_render
 from ..zip import solver as zip_solver
 
+HUB_URL = "https://www.linkedin.com/games/"  # LinkedIn's games hub: a card for each game
+
+
+def page_url(slug: str) -> str:
+    """A LinkedIn game's page, from its slug on the hub ("mini-sudoku")."""
+    return f"{HUB_URL}{slug}/"
+
 
 @dataclass(frozen=True)
 class Game:
     name: str
     title: str
-    url: str
+    slug: str  # its name on LinkedIn, in its page's address
+    url: str  # its page: page_url(slug), or another one for testing
     scan: Callable[[ImageSource], Any]  # returns a scan with .puzzle and .grid
     moves: Callable[[Any], list[Action] | None]  # None if the puzzle has no solution
     solve: Callable[[Any], Any | None]
@@ -58,7 +66,7 @@ class Game:
 
 
 def _linkedin(slug: str, **game: Any) -> Game:
-    return Game(url=f"https://www.linkedin.com/games/{slug}/", **game)
+    return Game(slug=slug, url=page_url(slug), **game)
 
 
 GAMES = {

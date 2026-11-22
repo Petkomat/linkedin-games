@@ -25,8 +25,8 @@ from playwright.sync_api import Page, sync_playwright
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from .browser import Player
-from .games import GAMES, Game
-from .hub import HUB_URL, played_today
+from .games import GAMES, HUB_URL, Game
+from .hub import played_today
 from .report import report
 from .result import looks_blank
 from .timing import Pauses, Tempo

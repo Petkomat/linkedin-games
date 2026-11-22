@@ -19,17 +19,16 @@ import time
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import urlparse
 
 from playwright.sync_api import Browser, Page
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
 from engines.play.check import START_WAIT, VIEWPORT, check_all, click_start_screens
-from engines.play.games import GAMES
+from engines.play.games import GAMES, HUB_URL
 
 from .github import GhGitHub, gh
-from .scout import HUB, HubGame, how_to_play, hub_games, scout, wait_for_rules
+from .scout import HubGame, how_to_play, hub_games, scout, wait_for_rules
 from .watcher import incident, watch
 
 SETTLE = 5.0  # s for a new game's board to show after its start screens
@@ -40,7 +39,7 @@ READ_WAIT = 1000  # ms for one read of the dialog's text, should the dialog go a
 
 
 def built_slugs() -> set[str]:
-    return {[p for p in urlparse(game.url).path.split("/") if p][1] for game in GAMES.values()}
+    return {game.slug for game in GAMES.values()}
 
 
 def describe(browser: Browser, out: Path) -> Callable[[HubGame], str]:
@@ -112,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         browser = playwright.chromium.launch(channel="chrome", headless=True)
         try:
             page = browser.new_page(viewport=VIEWPORT)
-            response = page.goto(HUB)
+            response = page.goto(HUB_URL)
             status = response.status if response else 0
             html = page.content()
             keep_hub(page, html, args.out / "scout")
