@@ -8,7 +8,7 @@ from engines.sumbreak import DOUBLE, Puzzle
 from engines.sumbreak.ocr import read_puzzle, scan
 from tests.helpers import example
 
-from .boards import SUMBREAK1, SUMBREAK4, SUMBREAK5, board
+from .boards import SUMBREAK1, SUMBREAK4, SUMBREAK5, SUMBREAK8, board
 from .generator import random_puzzle
 from .pictures import MARGIN, drawn
 
@@ -48,6 +48,21 @@ def test_reads_x2_tiles_as_tiles_that_double_not_as_a_2(screenshot, scale):
     page = page.resize((scale * page.width, scale * page.height), Image.LANCZOS)
 
     assert read_puzzle(page) == SUMBREAK5
+
+
+@pytest.mark.parametrize(
+    "screenshot",
+    [
+        "sumbreak8.png",  # squares
+        "sumbreak9.png",  # circles, the 32's 3 so thin that it matched a 3 only 0.572 (issue #41)
+    ],
+)
+@pytest.mark.parametrize("scale", [1, 1.5, 2])  # 1.5: a Windows screen scaled to 150%
+def test_reads_a_4x4_board_with_numbers_of_three_digits(screenshot, scale):
+    page = Image.open(example("sumbreak", screenshot))
+    page = page.resize((round(scale * page.width), round(scale * page.height)), Image.LANCZOS)
+
+    assert read_puzzle(page) == SUMBREAK8
 
 
 def sumbreak5_with_its_top_x2_showing(sign: str) -> Image.Image:
