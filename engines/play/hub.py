@@ -58,9 +58,9 @@ def played_today(context: BrowserContext, game: Game, hub: str = HUB_URL, card_w
     more, or anything else goes wrong: then the game is played as usual.
 
     The hub is opened in a tab of its own in `context`, closed afterwards, so
-    whatever it does can't get in the way of the game's page: after a hub
-    that failed to load, Chrome would still be opening its error page when
-    the game's page is opened in the same tab, which stops that."""
+    whatever it does can't get in the way of the game's page. In the same
+    tab, after a hub that failed to load, Chrome was still opening its error
+    page when the game's page was opened, and that stopped the game's page."""
     from playwright.sync_api import Error as PlaywrightError  # the browser extra, only needed here
 
     tab = None
