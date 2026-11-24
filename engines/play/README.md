@@ -6,7 +6,14 @@ keyboard. No LLM is involved anywhere.
 ```
 uv sync --extra browser
 uv run --extra browser python -m engines.play queens     # or tango, sudoku, patches, sumbreak, wend, zip
+uv run --extra browser python -m engines.play queens zip --close-after 5     # several, one after another
+uv run --extra browser python -m engines.play all --close-after 5            # every game
 ```
+
+Several games are played one after another, in the order named (`all` is
+every game, in the order of [`games.py`](games.py)), in the same tab, after
+one login and one look at the hub. `-o` names the screenshot of one game, so
+it can't be used with several.
 
 1. Chrome opens with its own profile (default `~/.linkedin-games/chrome-profile`).
    If you aren't logged in to LinkedIn there, it opens the login page and
@@ -16,10 +23,11 @@ uv run --extra browser python -m engines.play queens     # or tango, sudoku, pat
    `uv run --extra browser python -m engines.play --login` once first: it
    opens an ordinary Chrome window on the same profile. Log in there, then
    close the window.
-2. The games hub opens in a tab of its own. If it shows the game as played
-   today, the player prints `<Title>: already played today; skipped.`, closes
-   the browser at once and exits with 0, without opening the game. See
-   [Games played today](#games-played-today).
+2. The games hub opens once, in a tab of its own, for all the games named.
+   For each game it shows as played today, the player prints
+   `<Title>: already played today; skipped.` and doesn't open the game. If
+   every game was skipped, it closes the browser at once and exits with 0.
+   See [Games played today](#games-played-today).
 3. The game opens with its board already showing; no game has a start button.
    The screen is read until the same board is read twice in a row, so a
    board that is still fading in isn't played, and that board has a solution.
@@ -35,6 +43,12 @@ uv run --extra browser python -m engines.play queens     # or tango, sudoku, pat
    browser stays open until you close its window (or press Ctrl+C), so nothing
    is cut off and you can look at the result. `--close-after 5` closes it
    five seconds after the end instead.
+5. With several games, the next game opens in the same tab: at once, or with
+   `--close-after S`, after the finished game has stayed on screen for S
+   seconds. Only the last game is left open as in step 4. A game that shows
+   no board it can read and solve doesn't stop the games after it. The exit
+   code is 0 if every game was played or skipped, and 1 if any found no such
+   board.
 
 ## Games played today
 
@@ -58,15 +72,23 @@ deploys, so the decision is made from the picture's pixels.
   has 330-340 such pixels at 1x and about 1420 at 2x. Pictures without the
   disc have none. The owner measured 300-350 on the played cards of the
   signed-in hub, and none on the others.
-- `played_today` opens the hub in a new tab of the same browser and closes
-  the tab afterwards. It takes the first `img` in the game's card. The card
-  may link by path (`/games/zip/`), as on the signed-in hub, or by the whole
-  address, with or without a query, as on the guests' hub. It waits until
-  the picture is drawn (its box shows before the picture arrives), then
-  screenshots it.
-- If the hub doesn't load within 10 s, has no card for the game within 10 s
-  more, or anything else fails, the player says so and plays the game as
-  before. The check costs at most about 20 s.
+- `not_played_today(context, games)` opens the hub once, in a new tab of the
+  same browser, reads every game's card on it, closes the tab and returns
+  the games whose card shows no check, in their order. So a run of all seven
+  games loads the hub once, not seven times. For each card it takes the
+  first `img`. The card may link by path (`/games/zip/`), as on the
+  signed-in hub, or by the whole address, with or without a query, as on
+  the guests' hub. It waits until the picture is drawn (its box shows before
+  the picture arrives), then screenshots it. `played_today(context, game)`
+  asks the same about one game.
+- If the hub doesn't load within 10 s, every game counts as not played. Each
+  card then has 10 s to show and its picture to be drawn. Once the hub has
+  been loaded 10 s, a card that isn't on it is given up on at once, so a hub
+  with none of the cards (say, after LinkedIn changes how they link) costs
+  one wait, not one per game. For each game whose card can't be read, or
+  when anything else fails, the player says so and plays the game as before.
+  The check costs about 20 s at most, unless a card is there but its picture
+  never draws.
 - A tab of its own, because after a hub that failed to load, Chrome is still
   opening its error page when the game is opened in the same tab. That
   stopped the game's page from opening.
@@ -282,14 +304,24 @@ days.
   browser at 2x, on a local hub with SVG cards like LinkedIn's: played and
   unplayed cards, a card linked by its whole address, no card (it gives up
   within the wait), a hub that doesn't load, and pictures that arrive a
-  second after the page from a local server. The owner's hub screenshot
-  (`examples/hub/signed-in-hub1.png`) isn't in the repo yet, so no test uses
-  a real one.
+  second after the page from a local server. For several games: a hub on a
+  local server that counts its visits, with played and unplayed cards and
+  no card for one game, is visited once and gives the unplayed games and the
+  one without a card. A hub with none of the games' cards gives up on five
+  games within 3 s on a 1 s wait. A hub that doesn't load gives every game,
+  with a line for each. No test uses the owner's hub screenshot
+  (`examples/hub/signed-in-hub1.png`).
 - `tests/play/test_play_cli.py` also runs the signed-in player on a page with
   LinkedIn's login cookie that can't reach LinkedIn. A game the hub shows as
   played is skipped with the exact line and exit code 0, and LinkedIn is
   never asked for it. When the hub (LinkedIn's own, so unreachable) doesn't
-  load, or shows the game unplayed, the game is opened and played.
+  load, or shows the game unplayed, the game is opened and played. Four
+  games, two of them played, visit the local hub once: the two played ones
+  are skipped with their line and never opened, and the other two (queens1.png
+  and sudoku1.png on local pages) are played. A game with no board fails the
+  run with exit code 1, but the game after it is still played. The command
+  line takes one game as before, several in the order given and each once,
+  or `all`; it refuses no game, an unknown game, and `-o` with several.
 
 ## Not done yet
 

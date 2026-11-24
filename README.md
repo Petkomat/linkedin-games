@@ -14,7 +14,7 @@ uv run python -m engines.<game> examples/<game>/<file>.png -o solved.png
 uv run pytest
 
 uv sync --extra browser
-uv run --extra browser python -m engines.play <game>
+uv run --extra browser python -m engines.play <game>     # or several games, or all
 ```
 
 ## Layout
