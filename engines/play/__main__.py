@@ -18,6 +18,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -26,7 +27,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from .browser import Player
 from .games import GAMES, HUB_URL, Game
-from .hub import played_today
+from .hub import not_played_today
 from .report import report
 from .result import looks_blank
 from .timing import Pauses, Tempo
@@ -69,8 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.close_after is not None and args.close_after < 0:
         parser.error("--close-after can't be negative")
     game = GAMES[args.game]
-    started = datetime.now()
-    output = args.output or screenshot_path(game.name, started)
+    save_as = (lambda game, started: args.output) if args.output else screenshot_path
 
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch_persistent_context(
@@ -78,40 +78,58 @@ def main(argv: list[str] | None = None) -> int:
         )
         page = browser.pages[0] if browser.pages else browser.new_page()
         player = Player(page, tempo=Tempo(Pauses(args.pause, args.shortest_pause, args.pause_tail)))
-        code = run(player, game, output, args.wait, started, args.close_after)
+        code = run(player, [game], args.wait, args.close_after, save_as=save_as)
         browser.close()
     return code
 
 
+def screenshot_path(game: Game, started: datetime) -> Path:
+    """plays/<game>/<date>_<time>.png. Names sort by time, and use no ':', which
+    Windows doesn't allow in file names."""
+    return PLAYS / game.name / f"{started:%Y-%m-%d_%H-%M-%S}.png"
+
+
 def run(
     player: Player,
-    game: Game,
-    output: Path,
+    games: Sequence[Game],
     board_wait: float,
-    started: datetime,
     close_after: float | None = None,
     hub: str = HUB_URL,
+    save_as: Callable[[Game, datetime], Path] = screenshot_path,
 ) -> int:
-    """The signed-in play of `game` on the player's page, as the command line
-    runs it; returns its exit code.
+    """The signed-in play of `games`, one after another on the player's page,
+    as the command line runs it; returns its exit code.
 
-    After making sure the user is logged in, it looks at the games hub in a
-    tab of its own (see hub.played_today). A game the hub shows as played
-    today is skipped at once with exit code 0: its page isn't opened, no move
-    is made and the page isn't left open. Otherwise the game is opened and
-    played (see `play`), and the page left open as `leave_open` says: 0 if
-    played, 1 if no board was read and solved."""
+    After making sure the user is logged in, it looks at the games hub once,
+    in a tab of its own (see hub.not_played_today). A game the hub shows as
+    played today is skipped at once: its page isn't opened and no move is
+    made. The others are opened and played in order (see `play`), each saved
+    as save_as(game, the time it was opened) says. Between two games the
+    finished one stays on screen for `close_after` s (none without it); the
+    last one is left open as `leave_open` says. If every game is skipped,
+    the page isn't left open. Exit code 0 if every game was played or
+    skipped, 1 if any found no board it could read and solve."""
     page = player.page
     _log_in(page)
-    if played_today(page.context, game, hub):
-        print(f"{game.title}: already played today; skipped.")
+    to_play = not_played_today(page.context, games, hub)
+    for game in games:
+        if game not in to_play:
+            print(f"{game.title}: already played today; skipped.")
+    if not to_play:
         return 0
     page.bring_to_front()  # back from the hub's tab
-    _open(page, game)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    played = play(player, game, output, board_wait, started)
+    code = 0
+    for number, game in enumerate(to_play):
+        if number and close_after:
+            page.wait_for_timeout(close_after * 1000)  # the finished game stays on screen
+        started = datetime.now()
+        _open(page, game)
+        output = save_as(game, started)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if not play(player, game, output, board_wait, started):
+            code = 1
     leave_open(page, close_after)
-    return 0 if played else 1
+    return code
 
 
 def play(player: Player, game: Game, output: Path, board_wait: float, started: datetime) -> bool:
@@ -135,12 +153,6 @@ def play(player: Player, game: Game, output: Path, board_wait: float, started: d
         print(f"The page still looked blank {player.result_wait.limit:.0f} s after the last move.")
     print(f"Done; the screen is in {output}")
     return True
-
-
-def screenshot_path(game: str, started: datetime) -> Path:
-    """plays/<game>/<date>_<time>.png. Names sort by time, and use no ':', which
-    Windows doesn't allow in file names."""
-    return PLAYS / game / f"{started:%Y-%m-%d_%H-%M-%S}.png"
 
 
 def leave_open(page: Page, close_after: float | None = None) -> None:
