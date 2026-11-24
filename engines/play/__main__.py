@@ -1,10 +1,13 @@
-"""uv run --extra browser python -m engines.play <game> [--profile DIR] [--close-after S]
+"""uv run --extra browser python -m engines.play <game> [<game> ...] [--profile DIR] [--close-after S]
+uv run --extra browser python -m engines.play all [--close-after S]
 uv run --extra browser python -m engines.play --login
 
 Opens today's game on LinkedIn in Chrome, reads the board from a screenshot,
 solves it and enters the moves with the mouse. The games show their board
-straight away; none of them has a start button. A game the games hub shows
-as played today is skipped without opening it.
+straight away; none of them has a start button. Several games are played one
+after another in the same tab; "all" is every game. The games hub is looked
+at once, first, and a game it shows as played today is skipped without
+opening it.
 
 The login is kept in the profile folder. Google refuses to sign in inside a
 browser that is being remote-controlled, so to sign in with Google, run
@@ -40,10 +43,32 @@ SESSION_COOKIE = "li_at"  # LinkedIn's login cookie
 
 
 def main(argv: list[str] | None = None) -> int:
+    args = arguments(argv)
+    if args.login:
+        return _log_in_by_hand(args.profile)
+    save_as = (lambda game, started: args.output) if args.output else screenshot_path
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch_persistent_context(
+            args.profile, channel="chrome", headless=False, no_viewport=True, chromium_sandbox=True
+        )
+        page = browser.pages[0] if browser.pages else browser.new_page()
+        player = Player(page, tempo=Tempo(Pauses(args.pause, args.shortest_pause, args.pause_tail)))
+        code = run(player, args.games, args.wait, args.close_after, save_as=save_as)
+        browser.close()
+    return code
+
+
+def arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    """The command line, checked; `games` is the games to play, in the order
+    named, each once ("all" is every game)."""
     parser = argparse.ArgumentParser(
-        prog="python -m engines.play", description="Play today's LinkedIn game in Chrome."
+        prog="python -m engines.play", description="Play today's LinkedIn games in Chrome."
     )
-    parser.add_argument("game", nargs="?", choices=sorted(GAMES))
+    parser.add_argument(
+        "games", nargs="*", metavar="game",
+        help=f"{', '.join(sorted(GAMES))}, or all; several are played one after another"
+    )
     parser.add_argument(
         "--login", action="store_true", help="log in in an ordinary Chrome window, then exit"
     )
@@ -54,33 +79,31 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--wait", type=float, default=60, help="seconds to wait for the board")
     parser.add_argument(
         "--close-after", type=float, metavar="S",
-        help="close the browser S seconds after the end (default: wait until you close it)"
+        help="close the browser S seconds after the end (default: wait until you close it);"
+        " with several games, each finished game also stays S seconds before the next opens"
     )
     parser.add_argument(
         "-o", "--output", type=Path,
-        help="final screenshot, with the solution next to it as .md; default plays/<game>/<date>_<time>.png"
+        help="final screenshot of one game, with the solution next to it as .md;"
+        " default plays/<game>/<date>_<time>.png"
     )
     args = parser.parse_args(argv)
     if args.login:
-        return _log_in_by_hand(args.profile)
-    if args.game is None:
+        return args
+    if not args.games:
         parser.error("name a game, or use --login")
+    unknown = [name for name in args.games if name not in GAMES and name != "all"]
+    if unknown:
+        parser.error(f"no game called {', '.join(unknown)}; choose from {', '.join(sorted(GAMES))}, or all")
     if args.shortest_pause > args.pause:
         parser.error("--shortest-pause can't be longer than --pause")
     if args.close_after is not None and args.close_after < 0:
         parser.error("--close-after can't be negative")
-    game = GAMES[args.game]
-    save_as = (lambda game, started: args.output) if args.output else screenshot_path
-
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch_persistent_context(
-            args.profile, channel="chrome", headless=False, no_viewport=True, chromium_sandbox=True
-        )
-        page = browser.pages[0] if browser.pages else browser.new_page()
-        player = Player(page, tempo=Tempo(Pauses(args.pause, args.shortest_pause, args.pause_tail)))
-        code = run(player, [game], args.wait, args.close_after, save_as=save_as)
-        browser.close()
-    return code
+    names = list(GAMES) if "all" in args.games else dict.fromkeys(args.games)
+    args.games = [GAMES[name] for name in names]
+    if args.output and len(args.games) > 1:
+        parser.error("-o saves one game's screenshot; name one game")
+    return args
 
 
 def screenshot_path(game: Game, started: datetime) -> Path:

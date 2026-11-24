@@ -23,7 +23,7 @@ from .test_play_in_browser import presses
 
 pytest.importorskip("playwright.sync_api", reason="needs: uv sync --extra browser")
 
-from engines.play.__main__ import leave_open, play, run, screenshot_path  # noqa: E402
+from engines.play.__main__ import arguments, leave_open, play, run, screenshot_path  # noqa: E402
 
 STARTED = datetime(2026, 11, 17, 9, 30)
 LINKEDIN = re.compile(r"^https?://([^/]*\.)?linkedin\.com/")
@@ -175,6 +175,36 @@ def test_a_play_whose_page_stays_blank_is_still_done_and_says_the_page_looked_bl
     printed = capsys.readouterr().out
     assert "looked blank" in printed
     assert "Done" in printed
+
+
+def test_the_command_line_takes_one_game_as_before():
+    args = arguments(["queens", "-o", "queens.png", "--close-after", "5"])
+
+    assert args.games == [GAMES["queens"]]
+    assert args.output == Path("queens.png")
+    assert args.close_after == 5
+
+
+def test_the_command_line_takes_several_games_in_the_order_given_each_once():
+    assert arguments(["zip", "queens", "zip"]).games == [GAMES["zip"], GAMES["queens"]]
+
+
+def test_all_on_the_command_line_is_every_game():
+    assert arguments(["all"]).games == list(GAMES.values())
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [[], ["chess"], ["queens", "chess"], ["queens", "tango", "-o", "one.png"], ["all", "-o", "one.png"]],
+    ids=["no game", "unknown game", "one unknown", "one file for two games", "one file for all"],
+)
+def test_the_command_line_refuses(argv):
+    with pytest.raises(SystemExit):
+        arguments(argv)
+
+
+def test_log_in_needs_no_game():
+    assert arguments(["--login"]).login
 
 
 def test_each_play_is_saved_under_its_game_named_by_when_it_started():
