@@ -18,12 +18,12 @@ from engines.play.result import ResultWait
 from engines.play.timing import INSTANT as NO_WAITING
 from tests.helpers import example
 
-from .pages import SCALE, hub_page, page_file, page_showing, showing
+from .pages import SCALE, hub_html, hub_page, local_site, page_file, page_showing, showing
 from .test_play_in_browser import presses
 
 pytest.importorskip("playwright.sync_api", reason="needs: uv sync --extra browser")
 
-from engines.play.__main__ import leave_open, play, run, screenshot_path  # noqa: E402
+from engines.play.__main__ import arguments, leave_open, play, run, screenshot_path  # noqa: E402
 
 STARTED = datetime(2026, 11, 17, 9, 30)
 LINKEDIN = re.compile(r"^https?://([^/]*\.)?linkedin\.com/")
@@ -51,17 +51,27 @@ def fast_player(page) -> Player:
     return Player(page, tempo=NO_WAITING, hand=INSTANT, result_wait=ResultWait(first_look=0.2, limit=2, poll=0.2, settle=0.2))
 
 
+def on_a_local_page(folder: Path, game: str, screenshot: str):
+    """`game`, with a local page that shows its example `screenshot` for its own."""
+    return dataclasses.replace(GAMES[game], url=page_file(folder, example(game, screenshot), scale=SCALE))
+
+
+def into(folder: Path):
+    """Where `run` saves each game's play: folder/<game>.png."""
+    return lambda game, started: folder / f"{game.name}.png"
+
+
 def test_a_game_the_hub_shows_as_played_today_is_skipped_without_opening_it(signed_in, linkedin, tmp_path, capsys):
     hub = hub_page(tmp_path, ("Queens", "/games/queens/", True), ("Tango", "/games/tango/", False))
-    output = tmp_path / "plays" / "queens" / "today.png"
+    plays = tmp_path / "plays"
 
-    code = run(fast_player(signed_in), GAMES["queens"], output, board_wait=5, started=STARTED, hub=hub)
+    code = run(fast_player(signed_in), [GAMES["queens"]], board_wait=5, hub=hub, save_as=into(plays))
 
     assert code == 0
     assert capsys.readouterr().out.splitlines()[-1] == "Queens: already played today; skipped."
     assert linkedin == []  # Queens' page was never opened
     assert signed_in.url == "about:blank"
-    assert not output.parent.exists()  # not even an empty folder for the play
+    assert not plays.exists()  # not even an empty folder for the play
     assert not signed_in.is_closed()  # main closes the browser at once; nothing waits for --close-after
 
 
@@ -69,29 +79,71 @@ def test_when_the_hub_does_not_load_the_game_is_opened_and_played(signed_in, lin
     # The hub is LinkedIn's own here, and LinkedIn can't be reached. Chrome
     # then opens its error page in the hub's tab, which must not stop the
     # game's page from opening.
-    queens = dataclasses.replace(GAMES["queens"], url=page_file(tmp_path, example("queens", "queens1.png"), scale=SCALE))
-    output = tmp_path / "plays" / "queens" / "today.png"
+    queens = on_a_local_page(tmp_path, "queens", "queens1.png")
 
-    code = run(fast_player(signed_in), queens, output, board_wait=5, started=STARTED, close_after=0)
+    code = run(fast_player(signed_in), [queens], board_wait=5, close_after=0, save_as=into(tmp_path))
 
     assert linkedin == ["https://www.linkedin.com/games/"]
     assert code == 0
-    assert queens.scan(Image.open(output)).puzzle == queens.scan(example("queens", "queens1.png")).puzzle
+    assert queens.scan(Image.open(tmp_path / "queens.png")).puzzle == queens.scan(example("queens", "queens1.png")).puzzle
     printed = capsys.readouterr().out
     assert "skipped" not in printed
     assert "Done" in printed
 
 
 def test_a_game_the_hub_shows_as_not_played_is_opened_and_played(signed_in, tmp_path, capsys):
-    queens = dataclasses.replace(GAMES["queens"], url=page_file(tmp_path, example("queens", "queens1.png"), scale=SCALE))
+    queens = on_a_local_page(tmp_path, "queens", "queens1.png")
     hub = hub_page(tmp_path, ("Queens", queens.url, False))  # its card links to the whole address
-    output = tmp_path / "queens.png"
 
-    code = run(fast_player(signed_in), queens, output, board_wait=5, started=STARTED, close_after=0, hub=hub)
+    code = run(fast_player(signed_in), [queens], board_wait=5, close_after=0, hub=hub, save_as=into(tmp_path))
 
     assert code == 0
-    assert output.exists()
+    assert (tmp_path / "queens.png").exists()
     assert "Done" in capsys.readouterr().out
+
+
+def test_several_games_look_at_the_hub_once_skip_the_played_ones_and_play_the_rest(
+    signed_in, linkedin, tmp_path, capsys
+):
+    queens = on_a_local_page(tmp_path, "queens", "queens1.png")
+    sudoku = on_a_local_page(tmp_path, "sudoku", "sudoku1.png")
+    page = hub_html(
+        ("Queens", queens.url, False),
+        ("Tango", "/games/tango/", True),
+        ("Sudoku", sudoku.url, False),
+        ("Zip", "/games/zip/", True),
+    )
+    games = [queens, GAMES["tango"], sudoku, GAMES["zip"]]
+
+    with local_site(lambda path: (page, "text/html")) as (hub, asked):
+        code = run(fast_player(signed_in), games, board_wait=5, close_after=0, hub=hub, save_as=into(tmp_path))
+
+    assert code == 0
+    assert asked.count("/") == 1
+    assert linkedin == []  # Tango's and Zip's pages were never opened
+    printed = capsys.readouterr().out.splitlines()
+    assert "Tango: already played today; skipped." in printed
+    assert "Zip: already played today; skipped." in printed
+    assert sum(line.startswith("Done") for line in printed) == 2
+    for game, screenshot in ((queens, "queens1.png"), (sudoku, "sudoku1.png")):
+        played = game.scan(Image.open(tmp_path / f"{game.name}.png")).puzzle
+        assert played == game.scan(example(game.name, screenshot)).puzzle
+
+
+def test_a_game_without_a_board_fails_the_run_but_the_games_after_it_are_still_played(signed_in, tmp_path, capsys):
+    nothing = tmp_path / "nothing.html"
+    nothing.write_text("<body></body>", encoding="utf-8")
+    tango = dataclasses.replace(GAMES["tango"], url=nothing.as_uri())
+    queens = on_a_local_page(tmp_path, "queens", "queens1.png")
+    hub = hub_page(tmp_path, ("Tango", tango.url, False), ("Queens", queens.url, False))
+
+    code = run(fast_player(signed_in), [tango, queens], board_wait=2, close_after=0, hub=hub, save_as=into(tmp_path))
+
+    assert code == 1
+    assert (tmp_path / "queens.png").exists()
+    printed = capsys.readouterr().out
+    assert "No solvable board" in printed
+    assert "Done" in printed
 
 
 def test_a_play_saves_the_solution_and_what_shows_after_a_blank_page(browser, tmp_path, capsys):
@@ -125,8 +177,38 @@ def test_a_play_whose_page_stays_blank_is_still_done_and_says_the_page_looked_bl
     assert "Done" in printed
 
 
+def test_the_command_line_takes_one_game_as_before():
+    args = arguments(["queens", "-o", "queens.png", "--close-after", "5"])
+
+    assert args.games == [GAMES["queens"]]
+    assert args.output == Path("queens.png")
+    assert args.close_after == 5
+
+
+def test_the_command_line_takes_several_games_in_the_order_given_each_once():
+    assert arguments(["zip", "queens", "zip"]).games == [GAMES["zip"], GAMES["queens"]]
+
+
+def test_all_on_the_command_line_is_every_game():
+    assert arguments(["all"]).games == list(GAMES.values())
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [[], ["chess"], ["queens", "chess"], ["queens", "tango", "-o", "one.png"], ["all", "-o", "one.png"]],
+    ids=["no game", "unknown game", "one unknown", "one file for two games", "one file for all"],
+)
+def test_the_command_line_refuses(argv):
+    with pytest.raises(SystemExit):
+        arguments(argv)
+
+
+def test_log_in_needs_no_game():
+    assert arguments(["--login"]).login
+
+
 def test_each_play_is_saved_under_its_game_named_by_when_it_started():
-    path = screenshot_path("zip", datetime(2026, 11, 10, 14, 3, 7))
+    path = screenshot_path(GAMES["zip"], datetime(2026, 11, 10, 14, 3, 7))
 
     assert path == Path("plays") / "zip" / "2026-11-10_14-03-07.png"
 

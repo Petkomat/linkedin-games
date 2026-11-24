@@ -1,10 +1,13 @@
-"""uv run --extra browser python -m engines.play <game> [--profile DIR] [--close-after S]
+"""uv run --extra browser python -m engines.play <game> [<game> ...] [--profile DIR] [--close-after S]
+uv run --extra browser python -m engines.play all [--close-after S]
 uv run --extra browser python -m engines.play --login
 
 Opens today's game on LinkedIn in Chrome, reads the board from a screenshot,
 solves it and enters the moves with the mouse. The games show their board
-straight away; none of them has a start button. A game the games hub shows
-as played today is skipped without opening it.
+straight away; none of them has a start button. Several games are played one
+after another in the same tab; "all" is every game. The games hub is looked
+at once, first, and a game it shows as played today is skipped without
+opening it.
 
 The login is kept in the profile folder. Google refuses to sign in inside a
 browser that is being remote-controlled, so to sign in with Google, run
@@ -18,6 +21,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -26,7 +30,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from .browser import Player
 from .games import GAMES, HUB_URL, Game
-from .hub import played_today
+from .hub import not_played_today
 from .report import report
 from .result import looks_blank
 from .timing import Pauses, Tempo
@@ -39,10 +43,32 @@ SESSION_COOKIE = "li_at"  # LinkedIn's login cookie
 
 
 def main(argv: list[str] | None = None) -> int:
+    args = arguments(argv)
+    if args.login:
+        return _log_in_by_hand(args.profile)
+    save_as = (lambda game, started: args.output) if args.output else screenshot_path
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch_persistent_context(
+            args.profile, channel="chrome", headless=False, no_viewport=True, chromium_sandbox=True
+        )
+        page = browser.pages[0] if browser.pages else browser.new_page()
+        player = Player(page, tempo=Tempo(Pauses(args.pause, args.shortest_pause, args.pause_tail)))
+        code = run(player, args.games, args.wait, args.close_after, save_as=save_as)
+        browser.close()
+    return code
+
+
+def arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    """The command line, checked; `games` is the games to play, in the order
+    named, each once ("all" is every game)."""
     parser = argparse.ArgumentParser(
-        prog="python -m engines.play", description="Play today's LinkedIn game in Chrome."
+        prog="python -m engines.play", description="Play today's LinkedIn games in Chrome."
     )
-    parser.add_argument("game", nargs="?", choices=sorted(GAMES))
+    parser.add_argument(
+        "games", nargs="*", metavar="game",
+        help=f"{', '.join(sorted(GAMES))}, or all; several are played one after another"
+    )
     parser.add_argument(
         "--login", action="store_true", help="log in in an ordinary Chrome window, then exit"
     )
@@ -53,65 +79,80 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--wait", type=float, default=60, help="seconds to wait for the board")
     parser.add_argument(
         "--close-after", type=float, metavar="S",
-        help="close the browser S seconds after the end (default: wait until you close it)"
+        help="close the browser S seconds after the end (default: wait until you close it);"
+        " with several games, each finished game also stays S seconds before the next opens"
     )
     parser.add_argument(
         "-o", "--output", type=Path,
-        help="final screenshot, with the solution next to it as .md; default plays/<game>/<date>_<time>.png"
+        help="final screenshot of one game, with the solution next to it as .md;"
+        " default plays/<game>/<date>_<time>.png"
     )
     args = parser.parse_args(argv)
     if args.login:
-        return _log_in_by_hand(args.profile)
-    if args.game is None:
+        return args
+    if not args.games:
         parser.error("name a game, or use --login")
+    unknown = [name for name in args.games if name not in GAMES and name != "all"]
+    if unknown:
+        parser.error(f"no game called {', '.join(unknown)}; choose from {', '.join(sorted(GAMES))}, or all")
     if args.shortest_pause > args.pause:
         parser.error("--shortest-pause can't be longer than --pause")
     if args.close_after is not None and args.close_after < 0:
         parser.error("--close-after can't be negative")
-    game = GAMES[args.game]
-    started = datetime.now()
-    output = args.output or screenshot_path(game.name, started)
+    names = list(GAMES) if "all" in args.games else dict.fromkeys(args.games)
+    args.games = [GAMES[name] for name in names]
+    if args.output and len(args.games) > 1:
+        parser.error("-o saves one game's screenshot; name one game")
+    return args
 
-    with sync_playwright() as playwright:
-        browser = playwright.chromium.launch_persistent_context(
-            args.profile, channel="chrome", headless=False, no_viewport=True, chromium_sandbox=True
-        )
-        page = browser.pages[0] if browser.pages else browser.new_page()
-        player = Player(page, tempo=Tempo(Pauses(args.pause, args.shortest_pause, args.pause_tail)))
-        code = run(player, game, output, args.wait, started, args.close_after)
-        browser.close()
-    return code
+
+def screenshot_path(game: Game, started: datetime) -> Path:
+    """plays/<game>/<date>_<time>.png. Names sort by time, and use no ':', which
+    Windows doesn't allow in file names."""
+    return PLAYS / game.name / f"{started:%Y-%m-%d_%H-%M-%S}.png"
 
 
 def run(
     player: Player,
-    game: Game,
-    output: Path,
+    games: Sequence[Game],
     board_wait: float,
-    started: datetime,
     close_after: float | None = None,
     hub: str = HUB_URL,
+    save_as: Callable[[Game, datetime], Path] = screenshot_path,
 ) -> int:
-    """The signed-in play of `game` on the player's page, as the command line
-    runs it; returns its exit code.
+    """The signed-in play of `games`, one after another on the player's page,
+    as the command line runs it; returns its exit code.
 
-    After making sure the user is logged in, it looks at the games hub in a
-    tab of its own (see hub.played_today). A game the hub shows as played
-    today is skipped at once with exit code 0: its page isn't opened, no move
-    is made and the page isn't left open. Otherwise the game is opened and
-    played (see `play`), and the page left open as `leave_open` says: 0 if
-    played, 1 if no board was read and solved."""
+    After making sure the user is logged in, it looks at the games hub once,
+    in a tab of its own (see hub.not_played_today). A game the hub shows as
+    played today is skipped at once: its page isn't opened and no move is
+    made. The others are opened and played in order (see `play`), each saved
+    as save_as(game, the time it was opened) says. Between two games the
+    finished one stays on screen for `close_after` s (none without it); the
+    last one is left open as `leave_open` says. If every game is skipped,
+    the page isn't left open. Exit code 0 if every game was played or
+    skipped, 1 if any found no board it could read and solve."""
     page = player.page
     _log_in(page)
-    if played_today(page.context, game, hub):
-        print(f"{game.title}: already played today; skipped.")
+    to_play = not_played_today(page.context, games, hub)
+    for game in games:
+        if game not in to_play:
+            print(f"{game.title}: already played today; skipped.")
+    if not to_play:
         return 0
     page.bring_to_front()  # back from the hub's tab
-    _open(page, game)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    played = play(player, game, output, board_wait, started)
+    code = 0
+    for number, game in enumerate(to_play):
+        if number and close_after:
+            page.wait_for_timeout(close_after * 1000)  # the finished game stays on screen
+        started = datetime.now()
+        _open(page, game)
+        output = save_as(game, started)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if not play(player, game, output, board_wait, started):
+            code = 1
     leave_open(page, close_after)
-    return 0 if played else 1
+    return code
 
 
 def play(player: Player, game: Game, output: Path, board_wait: float, started: datetime) -> bool:
@@ -135,12 +176,6 @@ def play(player: Player, game: Game, output: Path, board_wait: float, started: d
         print(f"The page still looked blank {player.result_wait.limit:.0f} s after the last move.")
     print(f"Done; the screen is in {output}")
     return True
-
-
-def screenshot_path(game: str, started: datetime) -> Path:
-    """plays/<game>/<date>_<time>.png. Names sort by time, and use no ':', which
-    Windows doesn't allow in file names."""
-    return PLAYS / game / f"{started:%Y-%m-%d_%H-%M-%S}.png"
 
 
 def leave_open(page: Page, close_after: float | None = None) -> None:
