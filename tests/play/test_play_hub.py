@@ -13,18 +13,16 @@ offers.
 
 from __future__ import annotations
 
-import threading
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
 from engines.play.games import GAMES
-from engines.play.hub import played_today, shows_played_check
+from engines.play.hub import not_played_today, played_today, shows_played_check
 
-from .pages import card_svg, hub_page
+from .pages import card_svg, hub_html, hub_page, local_site
 
 CHECK_GREEN = (5, 118, 66)  # #057642, the disc's colour, from the issue
 ICON = 48  # CSS px across a card's picture
@@ -148,30 +146,18 @@ def slow_hub():
     Tango not) arrive a second after the page, as on a slow line: the
     pictures' boxes show before the pictures do."""
 
-    class Hub(BaseHTTPRequestHandler):
-        def do_GET(self) -> None:  # noqa: N802 (http.server's name)
-            if self.path.startswith("/icon/"):
-                time.sleep(1)
-                body, kind = card_svg(played="checked" in self.path).encode(), "image/svg+xml"
-            else:
-                cards = (("queens", "checked"), ("tango", "plain"))
-                body, kind = "".join(
-                    f'<a href="/games/{slug}/"><img width="48" height="48" alt="" src="/icon/{icon}.svg"></a>'
-                    for slug, icon in cards
-                ).encode(), "text/html"
-            self.send_response(200)
-            self.send_header("Content-Type", kind)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+    def answer(path: str) -> tuple[str, str]:
+        if path.startswith("/icon/"):
+            time.sleep(1)
+            return card_svg(played="checked" in path), "image/svg+xml"
+        cards = (("queens", "checked"), ("tango", "plain"))
+        return "".join(
+            f'<a href="/games/{slug}/"><img width="48" height="48" alt="" src="/icon/{icon}.svg"></a>'
+            for slug, icon in cards
+        ), "text/html"
 
-        def log_message(self, *args) -> None:
-            pass
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Hub)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    yield f"http://127.0.0.1:{server.server_address[1]}/"
-    server.shutdown()
+    with local_site(answer) as (url, _):
+        yield url
 
 
 @pytest.mark.parametrize(("game", "played"), [("queens", True), ("tango", False)])
@@ -181,4 +167,54 @@ def test_a_card_picture_that_arrives_late_is_read_once_it_has_arrived(context, s
 
 def test_a_hub_that_does_not_load_lets_the_game_be_played(context, tmp_path):
     assert not played_today(context, GAMES["queens"], (tmp_path / "nowhere.html").as_uri())
+    assert context.pages == []
+
+
+# Several games: the hub is opened once, and each game's card read on it.
+
+
+@pytest.fixture
+def served_hub():
+    """TODAY's hub on a local server: its address, and the paths asked for."""
+    page = hub_html(*TODAY)
+    with local_site(lambda path: (page, "text/html")) as site:
+        yield site
+
+
+def test_one_look_at_the_hub_tells_which_of_several_games_are_still_to_play(context, served_hub, capsys):
+    hub, asked = served_hub
+    games = [GAMES[name] for name in ("zip", "tango", "patches", "queens")]  # no card for Patches
+
+    still_to_play = not_played_today(context, games, hub, card_wait=1)
+
+    assert still_to_play == [GAMES["tango"], GAMES["patches"]]
+    assert asked.count("/") == 1
+    assert context.pages == []
+    assert "whether Patches was played" in capsys.readouterr().out
+
+
+def test_a_hub_with_none_of_the_cards_costs_one_wait_not_one_per_game(context, tmp_path, capsys):
+    # As after LinkedIn changed how its cards link: each game is played.
+    hub = hub_page(tmp_path, ("Pinpoint", "/games/pinpoint/", True))
+    games = [GAMES[name] for name in ("patches", "queens", "sudoku", "wend", "zip")]
+    started = time.monotonic()
+
+    still_to_play = not_played_today(context, games, hub, card_wait=1)
+
+    assert time.monotonic() - started < 3  # one card_wait per game would be 5 s
+    assert still_to_play == games
+    printed = capsys.readouterr().out
+    assert all(f"whether {game.title} was played" in printed for game in games)
+    assert context.pages == []
+
+
+def test_a_hub_that_does_not_load_lets_every_game_be_played_and_says_so_for_each(context, tmp_path, capsys):
+    games = [GAMES[name] for name in ("queens", "tango")]
+
+    assert not_played_today(context, games, (tmp_path / "nowhere.html").as_uri()) == games
+    printed = capsys.readouterr().out.splitlines()
+    assert [line.split(" was played")[0] for line in printed] == [
+        "Couldn't see on the hub whether Queens",
+        "Couldn't see on the hub whether Tango",
+    ]
     assert context.pages == []

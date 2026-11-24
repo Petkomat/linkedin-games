@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import base64
 import html
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from math import ceil
 
 from PIL import Image
@@ -139,18 +143,53 @@ def card_svg(played: bool) -> str:
 
 
 def hub_page(folder, *cards: tuple[str, str, bool]) -> str:
-    """The URL of a page like the signed-in hub, saved in `folder`, with a card
-    for each (title, href, played): a[href] around a 48x48 picture (see
-    `card_svg`) and the game's title."""
+    """The URL of a page like the signed-in hub (see `hub_html`), saved in `folder`."""
+    path = folder / "hub.html"
+    path.write_text(hub_html(*cards), encoding="utf-8")
+    return path.as_uri()
+
+
+def hub_html(*cards: tuple[str, str, bool]) -> str:
+    """A page like the signed-in hub, with a card for each (title, href,
+    played): a[href] around a 48x48 picture (see `card_svg`) and the game's
+    title."""
     items = "".join(
         f'<li><a href="{href}"><img width="48" height="48" alt="" '
         f'src="data:image/svg+xml;base64,{base64.b64encode(card_svg(played).encode()).decode()}">'
         f"<p>{html.escape(title)}</p></a></li>"
         for title, href, played in cards
     )
-    path = folder / "hub.html"
-    path.write_text(f"<body style='margin:0;background:#f4f2ee'><ul>{items}</ul></body>", encoding="utf-8")
-    return path.as_uri()
+    return f"<body style='margin:0;background:#f4f2ee'><ul>{items}</ul></body>"
+
+
+@contextmanager
+def local_site(answer: Callable[[str], tuple[str, str]]) -> Iterator[tuple[str, list[str]]]:
+    """A web server on this machine that answers every GET of a path with
+    answer(path), a body and its content type. Yields the server's address and
+    the paths asked for so far, in order."""
+    asked: list[str] = []
+
+    class Site(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 (http.server's name)
+            asked.append(self.path)
+            body, kind = answer(self.path)
+            data = body.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", kind)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def log_message(self, *args) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Site)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        yield f"http://127.0.0.1:{server.server_address[1]}/", asked
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def _later(html: str, ms: int) -> str:
