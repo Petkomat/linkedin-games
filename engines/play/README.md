@@ -70,8 +70,9 @@ deploys, so the decision is made from the picture's pixels.
   pixels gives the screen's scale, and the threshold grows with its area:
   139 pixels at 1x, 554 at 2x. On the drawn pictures in the tests the disc
   has 330-340 such pixels at 1x and about 1420 at 2x. Pictures without the
-  disc have none. The owner measured 300-350 on the played cards of the
-  signed-in hub, and none on the others.
+  disc have none. On the owner's signed-in hub screenshot
+  ([`signed-in-hub1.png`](../../examples/hub/signed-in-hub1.png), 1x) the
+  played cards' pictures have 302-352, and the others none.
 - `not_played_today(context, games)` opens the hub once, in a new tab of the
   same browser, reads every game's card on it, closes the tab and returns
   the games whose card shows no check, in their order. So a run of all seven
@@ -309,8 +310,11 @@ days.
   no card for one game, is visited once and gives the unplayed games and the
   one without a card. A hub with none of the games' cards gives up on five
   games within 3 s on a 1 s wait. A hub that doesn't load gives every game,
-  with a line for each. No test uses the owner's hub screenshot
-  (`examples/hub/signed-in-hub1.png`).
+  with a line for each. And on real pictures: all nine cards of the owner's
+  signed-in hub screenshot (`examples/hub/signed-in-hub1.png`, 1x), each
+  cropped to its 48 px picture, read as the hub showed them: Wend, Patches,
+  Zip, Mini Sudoku, Tango and Queens played; Sumbreak, Crossclimb and
+  Pinpoint not.
 - `tests/play/test_play_cli.py` also runs the signed-in player on a page with
   LinkedIn's login cookie that can't reach LinkedIn. A game the hub shows as
   played is skipped with the exact line and exit code 0, and LinkedIn is

@@ -5,10 +5,11 @@ On the signed-in hub, a played game's card picture (48x48 CSS px, an SVG) is
 the game's icon with a dark green disc (#057642, about 23 CSS px wide,
 centred) and a white check cut out of it. Unplayed cards show the icon alone.
 
-The owner's hub screenshot (examples/hub/signed-in-hub1.png) didn't reach this
-branch, so the pictures here are drawn: icons with and without the disc and
-check, antialiased like a browser draws an SVG, at the screen scales Windows
-offers.
+Most pictures here are drawn: icons with and without the disc and check,
+antialiased like a browser draws an SVG, at the screen scales Windows offers.
+The real ones are cropped from the owner's signed-in hub screenshot
+(examples/hub/signed-in-hub1.png), at its own scale: six played cards and
+three unplayed.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from PIL import Image, ImageDraw
 
 from engines.play.games import GAMES
 from engines.play.hub import not_played_today, played_today, shows_played_check
+from tests.helpers import example
 
 from .pages import card_svg, hub_html, hub_page, local_site
 
@@ -94,6 +96,39 @@ def test_a_speck_of_the_green_is_not_the_check_at_any_scale(scale):
     # A dot 10 CSS px across has a fifth of the disc's area. At 2x that is
     # about 300 device px, as many as the whole disc has at 1x.
     assert not shows_played_check(picture(scale, speck=10))
+
+
+# The owner's signed-in hub, taken at 1x: nine cards in three rows of three,
+# in reading order below. Each card's picture is ICON px across, and its
+# icon's dark frame fills it, so the boxes were measured from the frames:
+# their left edges are at these x, their top edges at these y.
+HUB = example("hub", "signed-in-hub1.png")
+LEFTS = (302, 683, 1065)
+TOPS = (88, 208, 328)
+HUB_CARDS = [  # the game on each card, and whether the hub showed it played that day
+    ("Sumbreak", False),
+    ("Wend", True),
+    ("Patches", True),
+    ("Zip", True),
+    ("Mini Sudoku", True),
+    ("Tango", True),
+    ("Queens", True),
+    ("Crossclimb", False),
+    ("Pinpoint", False),
+]
+
+
+@pytest.mark.parametrize(
+    ("place", "played"), [pytest.param(place, played, id=game) for place, (game, played) in enumerate(HUB_CARDS)]
+)
+def test_every_card_on_the_owners_hub_reads_as_it_shows(place, played):
+    row, column = divmod(place, len(LEFTS))
+    left, top = LEFTS[column], TOPS[row]
+
+    with Image.open(HUB) as shot:
+        card = shot.crop((left, top, left + ICON, top + ICON))
+
+    assert shows_played_check(card) == played
 
 
 # In the browser: a local page stands in for the hub (see pages.hub_page).
