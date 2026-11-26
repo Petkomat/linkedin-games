@@ -9,7 +9,8 @@ reading digits, which the real screenshots check.
 A x2 tile is purple with "×2" in a greyish purple, as on sumbreak5.png: a
 square with a pale diamond, or, in the look with circles, a starburst. The
 real one is a scalloped circle (sumbreak6.png); a starburst with deeper
-points checks that a spikier x2 tile is still read. Pillow's font has no ×,
+points checks that a spikier x2 tile is still read. A x4 tile is the same
+with "×4", in the same colours as on sumbreak10.png. Pillow's font has no ×,
 so it is drawn as two strokes.
 """
 
@@ -19,7 +20,7 @@ import math
 
 from PIL import Image, ImageDraw, ImageFont
 
-from engines.sumbreak import DOUBLE, Puzzle
+from engines.sumbreak import FACTORS, Puzzle
 
 PAGE = (244, 242, 238)
 CARD = (248, 250, 253)
@@ -35,7 +36,7 @@ COLOURS = [
     ((245, 212, 95), (110, 92, 0)),
     ((255, 177, 97), (130, 70, 0)),
 ]
-DOUBLE_TILE, DIAMOND, DOUBLE_INK = (214, 149, 255), (230, 191, 255), (87, 55, 94)  # read from sumbreak5.png
+FACTOR_TILE, DIAMOND, FACTOR_INK = (214, 149, 255), (230, 191, 255), (87, 55, 94)  # read from sumbreak5.png
 STAR_POINTS = 12
 BOARD = 384  # px across at scale 1, as on LinkedIn's 3x3 board
 MARGIN = 200
@@ -47,7 +48,7 @@ def drawn(puzzle: Puzzle, circles: bool = False, scale: int = 1, star: float | N
     star = 0.85 if star is None else star
     pitch = scale * BOARD / puzzle.cols
     side = 0.9 * pitch
-    largest = max(n for row in puzzle.numbers for n in row if n is not None and n != DOUBLE)
+    largest = max(n for row in puzzle.numbers for n in row if n is not None and n not in FACTORS)
     width = round(2 * MARGIN * scale + BOARD * scale)
     page = Image.new("RGB", (width, width), PAGE)
     draw = ImageDraw.Draw(page)
@@ -60,13 +61,13 @@ def drawn(puzzle: Puzzle, circles: bool = False, scale: int = 1, star: float | N
                 if not circles:
                     draw.rounded_rectangle(_box(x, y, side), radius=side / 15, fill=EMPTY)
                 continue
-            if number == DOUBLE:
+            if number in FACTORS:
                 if circles:
-                    draw.polygon(_star(x, y, 0.35 * pitch, star), fill=DOUBLE_TILE)
+                    draw.polygon(_star(x, y, 0.35 * pitch, star), fill=FACTOR_TILE)
                 else:
-                    draw.rounded_rectangle(_box(x, y, side), radius=side / 15, fill=DOUBLE_TILE)
+                    draw.rounded_rectangle(_box(x, y, side), radius=side / 15, fill=FACTOR_TILE)
                     draw.regular_polygon((x, y, 0.38 * side), 4, rotation=45, fill=DIAMOND)
-                _times_two(draw, x, y, font)
+                _times(draw, x, y, font, FACTORS[number])
                 continue
             fill, ink = COLOURS[(number.bit_length() - 1) % len(COLOURS)]
             if circles:  # from 0.4 of a cell across for 1 to 0.85 for the biggest number
@@ -92,15 +93,16 @@ def _star(x: float, y: float, radius: float, inner: float) -> list[tuple[float, 
     return corners
 
 
-def _times_two(draw: ImageDraw.ImageDraw, x: float, y: float, font) -> None:
-    """ "×2" around (x, y), the × 0.6 as tall as the 2, as LinkedIn prints it."""
-    left, top, right, bottom = draw.textbbox((0, 0), "2", font=font, anchor="lt")
+def _times(draw: ImageDraw.ImageDraw, x: float, y: float, font, factor: int) -> None:
+    """ "×2" or "×4" around (x, y), the × 0.6 as tall as the digit, as LinkedIn prints it."""
+    digit = str(factor)
+    left, top, right, bottom = draw.textbbox((0, 0), digit, font=font, anchor="lt")
     width, height = right - left, bottom - top
     times = 0.6 * height
     start = x - (times + 0.5 * times + width) / 2
-    two = start + 1.5 * times
-    draw.text((two, y), "2", fill=DOUBLE_INK, font=font, anchor="lm")
-    _, top, _, bottom = draw.textbbox((two, y), "2", font=font, anchor="lm")
+    at = start + 1.5 * times
+    draw.text((at, y), digit, fill=FACTOR_INK, font=font, anchor="lm")
+    _, top, _, bottom = draw.textbbox((at, y), digit, font=font, anchor="lm")
     middle, stroke = (top + bottom) / 2, max(1, round(height / 8))
     for sign in (-1, 1):
-        draw.line((start, middle - sign * times / 2, start + times, middle + sign * times / 2), fill=DOUBLE_INK, width=stroke)
+        draw.line((start, middle - sign * times / 2, start + times, middle + sign * times / 2), fill=FACTOR_INK, width=stroke)

@@ -162,8 +162,10 @@ def test_reads_a_large_board_with_empty_cells(circles, scale):
 
 
 X2_BOARD = random_puzzle(6, 6, seed=1, spread=3, doubles=4)
+X4_BOARD = random_puzzle(6, 6, seed=1, spread=3, doubles=2, quadruples=2)
 
 
+@pytest.mark.parametrize("puzzle", [X2_BOARD, X4_BOARD], ids=["x2", "x2 and x4"])
 @pytest.mark.parametrize(
     ("circles", "star"),
     [
@@ -173,8 +175,8 @@ X2_BOARD = random_puzzle(6, 6, seed=1, spread=3, doubles=4)
     ],
 )
 @pytest.mark.parametrize("scale", [1, 2])
-def test_reads_x2_tiles_on_a_large_board(circles, star, scale):
-    assert read_puzzle(drawn(X2_BOARD, circles, scale, star=star)) == X2_BOARD
+def test_reads_x2_and_x4_tiles_on_a_large_board(puzzle, circles, star, scale):
+    assert read_puzzle(drawn(puzzle, circles, scale, star=star)) == puzzle
 
 
 @pytest.mark.parametrize("scale", [1, 2])
