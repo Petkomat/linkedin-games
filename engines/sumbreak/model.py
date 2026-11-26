@@ -4,7 +4,8 @@ A grid of tiles, most of them numbered. Dragging a tile onto an orthogonal
 neighbour with the same number merges them: the neighbour now shows their sum,
 and the dragged tile's cell stays empty for the rest of the game. A x2 tile
 (DOUBLE) merges with any number next to it, either way round, and the cell it
-is dropped on shows that number doubled. Tiles never move, so a merge never
+is dropped on shows that number doubled; a x4 tile (QUADRUPLE) multiplies it
+by 4 the same way. Tiles never move, so a merge never
 reaches across an empty cell or along a diagonal. Merge until one tile remains.
 """
 
@@ -54,9 +55,10 @@ class Merge:
 
 def merged(dragged: Tile, onto: Tile) -> int:
     """What a merge leaves on the cell it is dropped on: two equal numbers add
-    up, and a x2 tile doubles the number it meets, whichever of them is dragged."""
-    if dragged == DOUBLE:
-        return 2 * onto
-    if onto == DOUBLE:
-        return 2 * dragged
+    up, and a x2 (x4) tile multiplies the number it meets by 2 (4), whichever
+    of them is dragged."""
+    if dragged in FACTORS:
+        return FACTORS[dragged] * onto
+    if onto in FACTORS:
+        return FACTORS[onto] * dragged
     return dragged + onto

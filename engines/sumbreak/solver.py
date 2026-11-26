@@ -1,36 +1,38 @@
 """Backtracking Sumbreak solver.
 
-Numbers only grow, so a tile with the smallest number on the board can only
-ever merge with another tile of that number or with a x2 tile, and that tile
-has to be its neighbour already (a x2 tile that took another number first
-shows at least twice the smallest). Every smallest tile must merge (or nothing
-could be left but itself), so the smallest tiles are paired off first. Each
-one is a unit whose options are its merges: with a neighbour with the same
-number or a x2 neighbour, either of them dragged onto the other.
+A factor tile is a x2 or a x4 tile: it merges with any number next to it and
+multiplies it by 2 or 4. Numbers only grow, so a tile with the smallest number
+on the board can only ever merge with another tile of that number or with a
+factor tile, and that tile has to be its neighbour already (a factor tile
+that took another number first shows at least twice the smallest). Every
+smallest tile must merge (or nothing could be left but itself), so the
+smallest tiles are paired off first. Each one is a unit whose options are its
+merges: with a neighbour with the same number or a factor tile, either of
+them dragged onto the other.
 
 A merge is not an option if it leaves a board that can no longer end in one
 tile, which shows in one of four ways:
   * the tiles fall apart into groups with empty cells between them, which can
     never meet again;
   * a number has no neighbour with its number, a smaller one that could
-    double up to it, or a x2 tile: its neighbours only grow or leave, so it
-    is stuck;
+    double up to it, or a factor tile: its neighbours only grow or leave, so
+    it is stuck;
   * the smallest tiles can't each get a partner of their own;
   * the tiles up to some number, in a group that touches, can't add up to
-    tiles of twice that number, even with what the group's x2 tiles add.
+    tiles of twice that number, even with what the group's factor tiles add.
 
 The search branches on the unit with the fewest options: one with none is a
 dead end, and one with a single option is forced. Boards it has already seen
 fail are not searched again. The search stops at the first solution. Every
 merge it makes, and every merge it takes back, is written to `trace`.
 
-Two x2 tiles are never merged: no board has shown what that would do.
+Two factor tiles are never merged: no board has shown what that would do.
 """
 
 from __future__ import annotations
 
 from ..common.trace import Trace
-from .model import DOUBLE, Cell, Merge, Puzzle, Tile, merged
+from .model import FACTORS, Cell, Merge, Puzzle, Tile, merged
 
 Tiles = dict[Cell, Tile]
 
@@ -70,7 +72,7 @@ def solve(puzzle: Puzzle, trace: Trace | None = None) -> list[Merge] | None:
 
 
 def _numbers(tiles: Tiles) -> list[int]:
-    return [number for number in tiles.values() if number != DOUBLE]
+    return [number for number in tiles.values() if number not in FACTORS]
 
 
 def _options(tiles: Tiles) -> list[tuple[Merge, Tiles]]:
@@ -83,7 +85,7 @@ def _options(tiles: Tiles) -> list[tuple[Merge, Tiles]]:
             continue
         options = []
         for other in _neighbours(cell):
-            if tiles.get(other) in (number, DOUBLE):
+            if tiles.get(other) == number or tiles.get(other) in FACTORS:
                 for merge in (Merge(cell, other), Merge(other, cell)):
                     after = _after(tiles, merge)
                     if not _dead(after, merge):
@@ -121,13 +123,13 @@ def _dead(tiles: Tiles, merge: Merge) -> bool:
 
 def _stuck(cell: Cell, tiles: Tiles) -> bool:
     """Has the number on `cell` no neighbour that has, or could double up to,
-    its number, nor a x2 tile? A x2 tile merges with any number, so it is
-    never stuck; one cut off from the rest is `_split`."""
+    its number, nor a factor tile? A factor tile merges with any number, so
+    it is never stuck; one cut off from the rest is `_split`."""
     number = tiles[cell]
-    if number == DOUBLE:
+    if number in FACTORS:
         return False
     return not any(
-        tiles[other] == DOUBLE or _doubles_to(tiles[other], number) for other in _neighbours(cell) if other in tiles
+        tiles[other] in FACTORS or _doubles_to(tiles[other], number) for other in _neighbours(cell) if other in tiles
     )
 
 
@@ -146,28 +148,30 @@ def _split(tiles: Tiles) -> bool:
 
 def _uneven(tiles: Tiles) -> bool:
     """Do the tiles up to some number t, in a group that touches, add up to
-    no whole number of tiles of 2t, even with what its x2 tiles can add?
+    no whole number of tiles of 2t, even with what its factor tiles can add?
 
-    Until they reach 2t, such tiles can only merge with each other or with a
-    x2 tile next to them (the others are bigger), and they can't stay below
-    it, so each group ends up as tiles of 2t. A merge of two of them keeps
-    the group's sum; a x2 tile adds the number it doubles, the smallest
-    number doubled a few times and at most t. So a group that is r short of
-    a multiple of 2t needs at least as many x2 tiles as r has ones in
-    binary, counted in smallest numbers. x2 tiles count as low for every t,
-    which joins the groups they touch. Every number is the smallest doubled,
-    which `solve` checks first."""
+    Until they pass t, such tiles can only merge with each other or with a
+    factor tile next to them (the others are bigger), and they can't stay at
+    t or below. So each one leaves as 2t or, multiplied by 4, as 4t: a
+    multiple of 2t either way. A merge of two of them keeps the group's sum;
+    a x2 tile adds the number it doubles, the smallest number doubled a few
+    times and at most t, and a x4 tile adds three times such a number. So a
+    group that is r short of a multiple of 2t, counted in smallest numbers,
+    needs factor tiles that add up to at least as many ones in binary as r
+    has: one for a x2 tile, two for a x4 tile (3 is 11). Factor tiles count
+    as low for every t, which joins the groups they touch. Every number is
+    the smallest doubled, which `solve` checks first."""
     numbers = _numbers(tiles)
     smallest, largest = min(numbers), max(numbers)
     t = 2 * smallest  # for t = smallest, `_unpaired` asks more
     while t < largest:
-        low = {cell for cell, number in tiles.items() if number == DOUBLE or number <= t}
+        low = {cell for cell, number in tiles.items() if number in FACTORS or number <= t}
         while low:
             group = _group(next(iter(low)), low)
             low -= group
-            doubles = sum(tiles[cell] == DOUBLE for cell in group)
-            short = -sum(tiles[cell] for cell in group if tiles[cell] != DOUBLE) % (2 * t)
-            if (short // smallest).bit_count() > doubles:
+            ones = sum((FACTORS[tiles[cell]] - 1).bit_count() for cell in group if tiles[cell] in FACTORS)
+            short = -sum(tiles[cell] for cell in group if tiles[cell] not in FACTORS) % (2 * t)
+            if (short // smallest).bit_count() > ones:
                 return True
         t *= 2
     return False
@@ -175,7 +179,7 @@ def _uneven(tiles: Tiles) -> bool:
 
 def _unpaired(tiles: Tiles) -> bool:
     """Can't each smallest tile get a partner of its own, a neighbour with
-    its number or a x2 tile?
+    its number or a factor tile?
 
     Each smallest tile first merges with one of them, and a partner takes
     only one. Neighbours are on cells of different colours of a chessboard,
@@ -185,9 +189,9 @@ def _unpaired(tiles: Tiles) -> bool:
     gives them all one (Mendelsohn and Dulmage's theorem)."""
     smallest = min(_numbers(tiles))
     cells = {cell for cell, number in tiles.items() if number == smallest}
-    partners = cells | {cell for cell, number in tiles.items() if number == DOUBLE}
+    partners = cells | {cell for cell, number in tiles.items() if number in FACTORS}
     if partners == cells and 2 * sum(sum(cell) % 2 for cell in cells) != len(cells):
-        return True  # without x2 tiles, as many smallest tiles on dark cells as on light ones
+        return True  # without factor tiles, as many smallest tiles on dark cells as on light ones
     for colour in (0, 1):
         partner: dict[Cell, Cell] = {}  # a partner's cell -> the smallest tile it takes
 

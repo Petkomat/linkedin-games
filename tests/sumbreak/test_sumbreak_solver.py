@@ -3,7 +3,7 @@ import pytest
 from engines.sumbreak import DOUBLE, solve
 from tests.helpers import solve_within
 
-from .boards import SUMBREAK1, SUMBREAK5, SUMBREAK8, board
+from .boards import SUMBREAK1, SUMBREAK5, SUMBREAK8, SUMBREAK10, board
 from .generator import random_puzzle
 from .rules import assert_is_solution, tiles_after
 
@@ -28,6 +28,14 @@ def test_solves_the_sumbreak8_example_the_first_4x4_board():
 
     assert_is_solution(SUMBREAK8, merges)
     assert list(tiles_after(SUMBREAK8, merges).values()) == [1024]
+
+
+def test_solves_the_sumbreak10_example_whose_x4_tile_multiplies_what_it_meets_by_4():
+    # 1 1 2 / 8 x4 2 / 32 8 4: the numbers add up to 58, so the x4 tile must
+    # take a 2 (the two 1s merged), which adds 6 and makes 64.
+    merges = solve(SUMBREAK10)
+
+    assert list(tiles_after(SUMBREAK10, merges).values()) == [64]
 
 
 @pytest.mark.parametrize(
