@@ -14,10 +14,12 @@ from dataclasses import dataclass
 
 from ..common import Cell
 
-__all__ = ["DOUBLE", "Cell", "Merge", "Puzzle", "Tile", "merged"]
+__all__ = ["DOUBLE", "FACTORS", "QUADRUPLE", "Cell", "Merge", "Puzzle", "Tile", "merged"]
 
 DOUBLE = "x2"  # the tile that doubles the number it merges with
-Tile = int | str  # a number, or DOUBLE
+QUADRUPLE = "x4"  # the tile that multiplies the number it merges with by 4
+FACTORS = {DOUBLE: 2, QUADRUPLE: 4}  # the tiles that multiply, and by what
+Tile = int | str  # a number, or one of FACTORS
 
 
 @dataclass(frozen=True)

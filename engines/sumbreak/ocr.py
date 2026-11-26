@@ -36,7 +36,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..vision import GridGeometry, ImageSource, Lattice, Unreadable, load_rgb, read_number, split_glyphs
-from .model import DOUBLE, Puzzle, Tile
+from .model import DOUBLE, FACTORS, Puzzle, Tile
 
 COLOURFUL = 40  # a pixel whose channels differ by more than this is part of a tile (tiles ~90-200, the card 5)
 MIN_SIDE = 12  # px; anything smaller can't hold a readable number
@@ -122,8 +122,8 @@ def scan(image: ImageSource) -> Scan:
         label = _label(rgb[tile.box], colourful[tile.box])
         if label is None or numbers[row][col] is not None:
             raise ValueError(f"no single number on the tile in row {row + 1}, column {col + 1}")
-        if isinstance(label, str) and label != DOUBLE:
-            raise ValueError(f"a tile showing {label} in row {row + 1}, column {col + 1}: only numbers and x2 are known")
+        if isinstance(label, str) and label not in FACTORS:
+            raise ValueError(f"a tile showing {label} in row {row + 1}, column {col + 1}: only numbers, x2 and x4 are known")
         numbers[row][col] = label
     for blob, known in zip(blobs, is_tile):
         cell = _cell(blob.middle, grid)
