@@ -46,10 +46,27 @@ def test_solves_the_sumbreak10_example_whose_x4_tile_multiplies_what_it_meets_by
         "2 2 . 4",  # the 4 sits across an empty cell from the 2s
         "4 x2 1",  # a x2 tile doubles one number, and then 8 and 1 or 4 and 2 are left
         "x2 x2",  # no board has shown that two x2 tiles merge, so they never are
+        "4 x4 2",  # a x4 tile makes 8 of the 2 or 16 of the 4, never 4 of the 2
+        "x2 x4",  # nor that a x2 and a x4 tile merge
     ],
 )
 def test_a_board_that_cant_end_in_one_tile_has_no_solution(text):
     assert solve(board(text)) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "x4 2 8",  # only the x4 tile dragged onto the 2 leaves its 8 next to the 8
+        "1 x4 \n . 4",  # only the 1 dragged onto the x4 tile leaves its 4 next to the 4
+        "1 1 x4 8",  # 1 + 1 meets the x4 tile, which makes 8 of their 2
+        "x4 1 4 8",  # the 1 is 3 short of a 4: one x4 tile adds as much as two x2 tiles could
+    ],
+)
+def test_a_x4_tile_multiplies_any_number_next_to_it_by_4_either_way_round(text):
+    puzzle = board(text)
+
+    assert_is_solution(puzzle, solve(puzzle))
 
 
 @pytest.mark.parametrize(
