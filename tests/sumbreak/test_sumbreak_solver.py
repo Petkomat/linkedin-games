@@ -1,6 +1,6 @@
 import pytest
 
-from engines.sumbreak import DOUBLE, solve
+from engines.sumbreak import DOUBLE, QUADRUPLE, solve
 from tests.helpers import solve_within
 
 from .boards import SUMBREAK1, SUMBREAK5, SUMBREAK8, SUMBREAK10, board
@@ -99,6 +99,20 @@ def test_solves_random_boards_with_x2_tiles_small_and_large_quickly(n, doubles, 
     # them, the more ways to try: an eighth of the cells on big boards.
     puzzle = random_puzzle(n, n, seed, doubles=doubles)
 
+    assert sum(row.count(DOUBLE) for row in puzzle.numbers) == doubles
+    assert_is_solution(puzzle, solve_within(solve, puzzle, seconds))
+
+
+@pytest.mark.parametrize("seed", range(10))
+@pytest.mark.parametrize(
+    ("n", "doubles", "quadruples", "seconds"),
+    [(3, 0, 1, 1.0), (3, 1, 1, 1.0), (5, 1, 2, 1.0), (7, 3, 3, 2.0), (8, 4, 4, 3.0)],
+)
+def test_solves_random_boards_with_x4_tiles_small_and_large_quickly(n, doubles, quadruples, seconds, seed):
+    # sumbreak10 has one x4 tile on 3x3.
+    puzzle = random_puzzle(n, n, seed, doubles=doubles, quadruples=quadruples)
+
+    assert sum(row.count(QUADRUPLE) for row in puzzle.numbers) == quadruples
     assert sum(row.count(DOUBLE) for row in puzzle.numbers) == doubles
     assert_is_solution(puzzle, solve_within(solve, puzzle, seconds))
 
