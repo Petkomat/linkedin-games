@@ -9,8 +9,8 @@ show where the cells are.
 1. **Tiles:** the clearly coloured pixels are cut into blobs, the groups of
    them that touch. A blob is a tile if it is about as high as wide and fills
    most of its box: a square nearly all of it, a circle 79%. Text, confetti
-   and specks don't. A x2 tile may be a starburst that fills less; it is
-   known by its "×2".
+   and specks don't. A x2 or x4 tile may be a starburst that fills less; it
+   is known by its "×2" or "×4".
 2. **Board:** tiles whose middles are as high (or as far left) as each
    other's are in one row (column). The step between cells is the most usual
    distance from a tile to the nearest one in its row or column. On a board
@@ -23,7 +23,7 @@ show where the cells are.
    number of pitches.
 4. **Numbers:** a tile's number is printed in a darker shade of its colour.
    Its shades go to the shared glyph reader, unless they hold a sign: a mark
-   shorter than the digits, or an x. "×2" is a x2 tile.
+   shorter than the digits, or an x. "×2" is a x2 tile, "×4" a x4 tile.
 5. **Refused:** a tile with any other sign, a mark the glyph reader finds
    like no digit, and a coloured shape on a cell that is no tile, raise
    ValueError. A tile not seen would be an empty cell.
@@ -36,13 +36,13 @@ from dataclasses import dataclass
 import numpy as np
 
 from ..vision import GridGeometry, ImageSource, Lattice, Unreadable, load_rgb, read_number, split_glyphs
-from .model import DOUBLE, Puzzle, Tile
+from .model import FACTORS, Puzzle, Tile
 
 COLOURFUL = 40  # a pixel whose channels differ by more than this is part of a tile (tiles ~90-200, the card 5)
 MIN_SIDE = 12  # px; anything smaller can't hold a readable number
 ROUND = 0.8  # a tile's box is at most this far from square (height / width)
 FILLED = 0.65  # share of its box a tile fills: a square ~0.98, a circle 0.79, a letter less
-SHAPED = 0.4  # share of its box a x2 tile of another shape fills at least, such as a starburst (~0.55-0.67)
+SHAPED = 0.4  # share of its box a x2 or x4 tile of another shape fills at least, such as a starburst (~0.55-0.67)
 SHAPE = 0.3  # of the pitch: a coloured shape this big on a cell is either a tile or refused
 ALIGNED = 0.25  # of the usual tile's side: how far apart middles in one row or column may be
 LINKED = 1.5  # steps between cells: neighbours on the board are 1 apart, the next tiles but one 2
@@ -122,8 +122,8 @@ def scan(image: ImageSource) -> Scan:
         label = _label(rgb[tile.box], colourful[tile.box])
         if label is None or numbers[row][col] is not None:
             raise ValueError(f"no single number on the tile in row {row + 1}, column {col + 1}")
-        if isinstance(label, str) and label != DOUBLE:
-            raise ValueError(f"a tile showing {label} in row {row + 1}, column {col + 1}: only numbers and x2 are known")
+        if isinstance(label, str) and label not in FACTORS:
+            raise ValueError(f"a tile showing {label} in row {row + 1}, column {col + 1}: only numbers, x2 and x4 are known")
         numbers[row][col] = label
     for blob, known in zip(blobs, is_tile):
         cell = _cell(blob.middle, grid)
@@ -131,7 +131,7 @@ def scan(image: ImageSource) -> Scan:
             continue
         if not any(blob.within(tile) for tile in tiles):  # not a bit of a number's ink
             row, col = cell
-            raise ValueError(f"a shape that is no tile in row {row + 1}, column {col + 1}: only squares, circles and x2 are known")
+            raise ValueError(f"a shape that is no tile in row {row + 1}, column {col + 1}: only squares, circles, x2 and x4 are known")
     return Scan(Puzzle(tuple(tuple(row) for row in numbers)), grid)
 
 
@@ -176,11 +176,12 @@ def _blobs(mask: np.ndarray) -> list[_Tile]:
 
 def _is_tile(blob: _Tile, rgb: np.ndarray, colourful: np.ndarray) -> bool:
     """Is `blob` about as high as wide, and does it fill most of its box? A x2
-    tile may fill less, as a starburst does, and shows it by its "x2"."""
+    or x4 tile may fill less, as a starburst does, and shows it by its "x2"
+    or "x4"."""
     if blob.side < MIN_SIDE or blob.side < ROUND * max(blob.height, blob.width):
         return False
     filled = colourful[blob.box].mean()
-    return filled >= FILLED or (filled >= SHAPED and _label(rgb[blob.box], colourful[blob.box]) == DOUBLE)
+    return filled >= FILLED or (filled >= SHAPED and _label(rgb[blob.box], colourful[blob.box]) in FACTORS)
 
 
 def _on_board(tiles: list[_Tile], tolerance: float) -> list[_Tile]:
@@ -256,8 +257,8 @@ def _cell(middle: tuple[float, float], grid: GridGeometry) -> tuple[int, int] | 
 
 def _label(box: np.ndarray, colourful: np.ndarray) -> Tile | None:
     """What a tile shows, from the pixels of its box: its number, DOUBLE for
-    "x2", what else it shows if it has a sign ("x", "x4", "an unknown sign"),
-    or None if it shows nothing.
+    "x2" and QUADRUPLE for "x4", what else it shows if it has a sign ("x",
+    "x16", "an unknown sign"), or None if it shows nothing.
 
     The tile's own colour is the most common one in it. The ink is the pixels
     darker than halfway to its darkest: the paler edges of small, blurry
@@ -295,7 +296,9 @@ def _label(box: np.ndarray, colourful: np.ndarray) -> Tile | None:
         return UNKNOWN_SIGN
     if not signs:
         return number
-    return "x" if number is None else DOUBLE if number == 2 else f"x{number}"
+    if number is None:
+        return "x"
+    return next((tile for tile, times in FACTORS.items() if times == number), f"x{number}")
 
 
 def _is_times(mark: np.ndarray) -> bool:

@@ -6,7 +6,7 @@ from engines.common.actions import Button, Drag, Think
 from engines.sumbreak.moves import moves
 from tests.helpers import solve_within
 
-from .boards import SUMBREAK1, SUMBREAK5, SUMBREAK8, board
+from .boards import SUMBREAK1, SUMBREAK5, SUMBREAK8, SUMBREAK10, board
 from .generator import random_puzzle
 from .rules import merged
 
@@ -24,8 +24,8 @@ LONG_SEARCH = random_puzzle(5, 5, seed=9)
 
 def play(puzzle, actions) -> list[dict[tuple[int, int], int | str]]:
     """Dragging a tile onto a neighbour with the same number merges them into
-    the neighbour, and so does dragging a x2 tile onto a number or a number
-    onto a x2 tile (rules.merged); the Undo button takes back the last merge.
+    the neighbour, and so does dragging a x2 or x4 tile onto a number or a
+    number onto one (rules.merged); the Undo button takes back the last merge.
     Returns the tiles after every move."""
     tiles = puzzle.tiles()
     made: list[dict[tuple[int, int], int | str]] = []
@@ -70,6 +70,12 @@ def test_x2_tiles_double_what_they_are_dragged_onto_or_what_is_dragged_onto_them
     assert list(final.values()) == [32]
 
 
+def test_a_x4_tile_multiplies_what_it_is_dragged_onto_or_what_is_dragged_onto_it_by_4():
+    final = play(SUMBREAK10, moves(SUMBREAK10))[-1]
+
+    assert list(final.values()) == [64]
+
+
 def test_wrong_merges_are_made_and_then_undone():
     actions = moves(GUESSWORK)
 
@@ -85,10 +91,10 @@ def test_a_long_search_shows_a_few_wrong_merges_not_all_of_them():
     assert 0 < undos(actions) <= 5
 
 
-@pytest.mark.parametrize("doubles", [0, 4])
+@pytest.mark.parametrize(("doubles", "quadruples"), [(0, 0), (4, 0), (2, 2)])
 @pytest.mark.parametrize("seed", range(10))
-def test_every_move_on_random_large_boards_is_one_the_game_takes(seed, doubles):
-    puzzle = random_puzzle(6, 6, seed, doubles=doubles)
+def test_every_move_on_random_large_boards_is_one_the_game_takes(seed, doubles, quadruples):
+    puzzle = random_puzzle(6, 6, seed, doubles=doubles, quadruples=quadruples)
 
     actions = solve_within(moves, puzzle, seconds=1.0)
 

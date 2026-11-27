@@ -1,9 +1,9 @@
 import pytest
 
-from engines.sumbreak import DOUBLE, solve
+from engines.sumbreak import DOUBLE, QUADRUPLE, solve
 from tests.helpers import solve_within
 
-from .boards import SUMBREAK1, SUMBREAK5, SUMBREAK8, board
+from .boards import SUMBREAK1, SUMBREAK5, SUMBREAK8, SUMBREAK10, board
 from .generator import random_puzzle
 from .rules import assert_is_solution, tiles_after
 
@@ -30,6 +30,14 @@ def test_solves_the_sumbreak8_example_the_first_4x4_board():
     assert list(tiles_after(SUMBREAK8, merges).values()) == [1024]
 
 
+def test_solves_the_sumbreak10_example_whose_x4_tile_multiplies_what_it_meets_by_4():
+    # 1 1 2 / 8 x4 2 / 32 8 4: the numbers add up to 58, so the x4 tile must
+    # take a 2 (the two 1s merged), which adds 6 and makes 64.
+    merges = solve(SUMBREAK10)
+
+    assert list(tiles_after(SUMBREAK10, merges).values()) == [64]
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -38,10 +46,27 @@ def test_solves_the_sumbreak8_example_the_first_4x4_board():
         "2 2 . 4",  # the 4 sits across an empty cell from the 2s
         "4 x2 1",  # a x2 tile doubles one number, and then 8 and 1 or 4 and 2 are left
         "x2 x2",  # no board has shown that two x2 tiles merge, so they never are
+        "4 x4 2",  # a x4 tile makes 8 of the 2 or 16 of the 4, never 4 of the 2
+        "x2 x4",  # nor that a x2 and a x4 tile merge
     ],
 )
 def test_a_board_that_cant_end_in_one_tile_has_no_solution(text):
     assert solve(board(text)) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "x4 2 8",  # only the x4 tile dragged onto the 2 leaves its 8 next to the 8
+        "1 x4 \n . 4",  # only the 1 dragged onto the x4 tile leaves its 4 next to the 4
+        "1 1 x4 8",  # 1 + 1 meets the x4 tile, which makes 8 of their 2
+        "x4 1 4 8",  # the 1 is 3 short of a 4: one x4 tile adds as much as two x2 tiles could
+    ],
+)
+def test_a_x4_tile_multiplies_any_number_next_to_it_by_4_either_way_round(text):
+    puzzle = board(text)
+
+    assert_is_solution(puzzle, solve(puzzle))
 
 
 @pytest.mark.parametrize(
@@ -74,6 +99,21 @@ def test_solves_random_boards_with_x2_tiles_small_and_large_quickly(n, doubles, 
     # them, the more ways to try: an eighth of the cells on big boards.
     puzzle = random_puzzle(n, n, seed, doubles=doubles)
 
+    assert sum(row.count(DOUBLE) for row in puzzle.numbers) == doubles
+    assert_is_solution(puzzle, solve_within(solve, puzzle, seconds))
+
+
+@pytest.mark.parametrize("seed", range(10))
+@pytest.mark.parametrize(
+    ("n", "doubles", "quadruples", "seconds"),
+    [(3, 0, 1, 1.0), (3, 1, 1, 1.0), (5, 1, 2, 1.0), (7, 3, 3, 2.0), (8, 2, 4, 3.0)],
+)
+def test_solves_random_boards_with_x4_tiles_small_and_large_quickly(n, doubles, quadruples, seconds, seed):
+    # sumbreak10 has one x4 tile on 3x3. These take at most 0.91 s; with 4
+    # x2 and 4 x4 tiles on 8x8, seed 5 takes 1.9 s, too close to the limit.
+    puzzle = random_puzzle(n, n, seed, doubles=doubles, quadruples=quadruples)
+
+    assert sum(row.count(QUADRUPLE) for row in puzzle.numbers) == quadruples
     assert sum(row.count(DOUBLE) for row in puzzle.numbers) == doubles
     assert_is_solution(puzzle, solve_within(solve, puzzle, seconds))
 

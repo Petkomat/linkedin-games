@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from engines.sumbreak import DOUBLE, Puzzle
+from engines.sumbreak import FACTORS, Puzzle
 
 
 def board(text: str) -> Puzzle:
     """A board typed as numbers separated by spaces, one line per row; "." is an
-    empty cell and "x2" a tile that doubles what it merges with."""
+    empty cell, "x2" a tile that doubles what it merges with and "x4" one that
+    multiplies it by 4."""
     return Puzzle(
         tuple(
-            tuple(None if word == "." else DOUBLE if word == "x2" else int(word) for word in line.split())
+            tuple(None if word == "." else word if word in FACTORS else int(word) for word in line.split())
             for line in text.strip().splitlines()
             if line.strip()
         )
@@ -54,4 +55,14 @@ SUMBREAK8 = board("""
      1  4  1 256
      2  8  1 128
      4  8 32  64
+""")
+
+# Typed in from examples/sumbreak/sumbreak10.png, the daily board of
+# 2026-11-27, which the daily guest check refused (issue #53): the first x4
+# tile, a purple scalloped circle with "×4" on it. Without multiplying, its
+# numbers add up to 58; a x4 tile on a 2 adds 6, which makes 64.
+SUMBREAK10 = board("""
+     1  1  2
+     8 x4  2
+    32  8  4
 """)

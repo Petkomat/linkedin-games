@@ -8,7 +8,7 @@ from engines.sumbreak import DOUBLE, Puzzle
 from engines.sumbreak.ocr import read_puzzle, scan
 from tests.helpers import example
 
-from .boards import SUMBREAK1, SUMBREAK4, SUMBREAK5, SUMBREAK8, board
+from .boards import SUMBREAK1, SUMBREAK4, SUMBREAK5, SUMBREAK8, SUMBREAK10, board
 from .generator import random_puzzle
 from .pictures import MARGIN, drawn
 
@@ -65,17 +65,27 @@ def test_reads_a_4x4_board_with_numbers_of_three_digits(screenshot, scale):
     assert read_puzzle(page) == SUMBREAK8
 
 
-def sumbreak5_with_its_top_x2_showing(sign: str) -> Image.Image:
-    """sumbreak5.png with the 2 of its top x2 tile rubbed out, and for "x4"
-    the 4 of the tile below printed there instead, in the x2's ink.
+@pytest.mark.parametrize("scale", [1, 1.5, 2])
+def test_reads_a_x4_tile_as_a_tile_that_multiplies_by_4(scale):
+    # The daily check of 2026-11-27 refused it as an unknown factor (issue #53).
+    page = Image.open(example("sumbreak", "sumbreak10.png"))
+    page = page.resize((round(scale * page.width), round(scale * page.height)), Image.LANCZOS)
 
-    The 2 spans x 643-654, y 201-219 on a pale diamond; the 4 below spans
-    x 633-647, y 333-351, and its ink is darker than 122."""
+    assert read_puzzle(page) == SUMBREAK10
+
+
+def sumbreak5_with_its_top_x2_showing(sign: str) -> Image.Image:
+    """sumbreak5.png with the 2 of its top x2 tile rubbed out, and for "x16"
+    the 16 of the bottom left tile printed there instead, in the x2's ink.
+
+    The 2 spans x 643-654, y 201-219 on a pale diamond, which reaches past
+    x 670 there; the 16 spans x 496-518, y 465-483, and its ink is darker
+    than 116."""
     pixels = np.asarray(Image.open(example("sumbreak", "sumbreak5.png")).convert("RGB")).copy()
-    four = pixels[333:352, 633:648].mean(axis=2) < 122
-    pixels[199:222, 641:658] = (230, 191, 255)
-    if sign == "x4":
-        pixels[201:220, 643:658][four] = (87, 55, 94)
+    sixteen = pixels[465:484, 496:519].mean(axis=2) < 116
+    pixels[199:222, 641:668] = (230, 191, 255)
+    if sign == "x16":
+        pixels[201:220, 643:666][sixteen] = (87, 55, 94)
     return Image.fromarray(pixels)
 
 
@@ -83,7 +93,7 @@ def sumbreak5_with_its_top_x2_showing(sign: str) -> Image.Image:
     "sign",
     [
         "x",  # as the result screen's icon shows it (sumbreak-result1.png)
-        "x4",  # no board has shown one, so what it does is not known
+        "x16",  # no board has shown one, so what it does is not known (x4 is, since sumbreak10.png)
     ],
 )
 def test_a_tile_with_a_sign_other_than_x2_is_refused_not_read_as_a_number(sign):
@@ -152,8 +162,10 @@ def test_reads_a_large_board_with_empty_cells(circles, scale):
 
 
 X2_BOARD = random_puzzle(6, 6, seed=1, spread=3, doubles=4)
+X4_BOARD = random_puzzle(6, 6, seed=1, spread=3, doubles=2, quadruples=2)
 
 
+@pytest.mark.parametrize("puzzle", [X2_BOARD, X4_BOARD], ids=["x2", "x2 and x4"])
 @pytest.mark.parametrize(
     ("circles", "star"),
     [
@@ -163,8 +175,8 @@ X2_BOARD = random_puzzle(6, 6, seed=1, spread=3, doubles=4)
     ],
 )
 @pytest.mark.parametrize("scale", [1, 2])
-def test_reads_x2_tiles_on_a_large_board(circles, star, scale):
-    assert read_puzzle(drawn(X2_BOARD, circles, scale, star=star)) == X2_BOARD
+def test_reads_x2_and_x4_tiles_on_a_large_board(puzzle, circles, star, scale):
+    assert read_puzzle(drawn(puzzle, circles, scale, star=star)) == puzzle
 
 
 @pytest.mark.parametrize("scale", [1, 2])
